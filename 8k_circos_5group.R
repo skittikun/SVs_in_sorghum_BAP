@@ -1,3 +1,4 @@
+library(openxlsx)
 library(circlize)
 library(RColorBrewer)
 library(RCircos)
@@ -17,8 +18,10 @@ sorghumgenome$start <- as.numeric(as.character(sorghumgenome$start))
 sorghumgenome$end <- as.numeric(as.character(sorghumgenome$end))
 
 tab <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/code/files/347_go.rds")
+tab <- tab[tab$svlen>= 50,]
 dim(tab)
 head(tab)
+tab[grepl("GO:0051015",tab$go),]
 
 table(tab$svtype)
 table(tab$svtype)*100/nrow(tab)
@@ -37,8 +40,6 @@ sum(!is.na(tab$genes))*100/nrow(tab)
 
 sum(is.na(tab$CDS))
 sum(!is.na(tab$CDS))
-#
-
 
 tab$ID <- paste(tab$chr, tab$pos, tab$svtype, tab$end, sep = "_")
 
@@ -51,7 +52,8 @@ head(pnin)
 background <- read.csv("/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/dat_back.cvs")
 head(background)
 cluster1 <- read.csv("/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/cluster_list.csv")
-cluster2 <- read.csv("/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/cluster_list_update.csv") %>% set_names(c("PI", "k5_cluster_all"))
+cluster2 <- read.csv("/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/cluster_list_update.csv") 
+colnames(cluster2) <- (c("PI", "k5_cluster_all"))
 cluster <- cbind.data.frame(cluster1, cluster2)
 colnames(cluster)[ncol(cluster)] <- "k5_cluster_all"
 head(cluster)
@@ -68,14 +70,9 @@ head(bc_sub)
 bc_sub$PI[(bc_sub$PI %in% colnames(pnin))]
 sum(colnames(pnin) %in% cluster$PI)
 
+#plot circos
+tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/8k_pval_5groups_fixedpval_sv.tiff", width=20, height=15, units="in", res=300)
 
-
-
-
-
-#tiff("/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/8k_pval.tiff", width=20, height=15, units="in", res=300)
-tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/8k_pval_5groups.tiff", width=20, height=15, units="in", res=300)
-tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/8k_pval_5groups_sugar.tiff", width=20, height=15, units="in", res=300)
 #setup the template
 gapdegree = 1
 circos.par("track.height" = 0.2, "clock.wise" = TRUE, start.degree = 90, gap.degree=gapdegree)
@@ -108,7 +105,7 @@ ytop <- ybottom+0.07
 
 colmat <- ifelse(coords$svtype == "DEL", "red", 
                  ifelse(coords$svtype == "INS", "blue", 
-                        ifelse(coords$svtype == "INV", "yellow", 
+                        ifelse(coords$svtype == "INV", "gold", 
                                ifelse(coords$svtype == "RPL", "grey", 
                                       ifelse(coords$svtype == "DUP", "green", "purple")))))
 
@@ -141,7 +138,6 @@ sumstackpn$percent <- sumstackpn$numindi/totalindi
 
 #add background
 head(bc_sub)
-#stackpn_back <- merge(stackpn, bc_sub, by.y = "PI", by.x = "ind", all.x = F, all.y = F)
 stackpn_back <- merge(stackpn, cluster, by.y = "PI", by.x = "ind", all.x = F, all.y = F)
 head(stackpn_back)
 dim(stackpn)
@@ -221,7 +217,7 @@ sumstackpn5 <- stackpn_back[stackpn_back$k5_cluster_all == 5,] %>% group_by(chr,
 head(sumstackpn5)
 head(sumstackpn)
 all(sumstackpn5$numindi <= table(cluster$k5_cluster_all)[5])
-sumstackpn5$percent <- sumstackpn5$numindi/table(cluster$k5_cluster_all)[5]
+sumstackpn5$percent <- sumstackpn5$numindi/table(cluster$k5_cluster_all)[5] #percent need fixing to missing
 
 head(sumstackpn1)
 head(sumstackpn2)
@@ -247,13 +243,18 @@ tail(dtsum)
 
 
 #pvalue column
+#load expected for each
+expectedtable <- read.csv("/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/expected_percentage_withoutNA.csv")
 pvalcol <- c()
 for(i in 1:nrow(dtsum)){
-eachrow <- dtsum[i, grepl("percent", colnames(dtsum))]*100#nrow(cluster)
-che <- chisq.test(eachrow, p = rep(1/5,5), correct = T)
-pval <- che[[3]]
-pvalcol <- c(pvalcol, pval)
-print(paste(i, i/nrow(dtsum)))
+  SVID <- dtsum$svid[i]
+  expectsv <- expectedtable[grepl(SVID, expectedtable$eachsv),2:6]
+  expectsv <- as.data.frame(t(expectsv))[,1]
+  eachrow <- dtsum[i, grepl("percent", colnames(dtsum))]*100#nrow(cluster)
+  che <- chisq.test(eachrow, p = (expectsv), correct = T)
+  pval <- che$p.value
+  pvalcol <- c(pvalcol, pval)
+  print(paste(i, i/nrow(dtsum)))
 #need to add which group has highest
 }
 dtsum <- cbind.data.frame(dtsum, pvalcol)
@@ -261,7 +262,7 @@ dtsum$pvalsig <- ifelse(pvalcol <= 0.01/totalindi, "**", ifelse(pvalcol <= 0.05/
 table(dtsum$pvalsig)
 dim(dtsum)
 head(dtsum)
-
+dtsum[grep("Chr01_1011344", dtsum$svid),]
 #cluster1
 
 coords <- as.data.frame(sumstackpn1)
@@ -423,7 +424,7 @@ dim(sumstackpn3)
 dim(sumstackpn4)
 dim(sumstackpn5)
 
-coords <- rbind.fill(sumstackpn1, sumstackpn2, sumstackpn3, sumstackpn4, sumstackpn5)
+coords <- plyr::rbind.fill(sumstackpn1, sumstackpn2, sumstackpn3, sumstackpn4, sumstackpn5)
 table(coords$group)
 dim(coords)
 
@@ -448,9 +449,9 @@ for(i in 1:nrow(sorghumgenome)){
   }
   allrect <- rbind.data.frame(allrect, recttab)
 }
-allrect <- allrect %>% set_names(c("chr", "pos", "end", "namegroup", "ybottom", "ytop"))
+allrect <- allrect %>% purrr::set_names(c("chr", "pos", "end", "namegroup", "ybottom", "ytop"))
 coords <- allrect
-colmat <- ifelse(coords$namegroup == 1, "yellow", 
+colmat <- ifelse(coords$namegroup == 1, "gold", 
                  ifelse(coords$namegroup == 2, "purple", 
                         ifelse(coords$namegroup == 3, "green", 
                                ifelse(coords$namegroup == 4, "red", 
@@ -465,14 +466,14 @@ for(i in 1:nrow(coords)){
   print(paste(i/nrow(coords)))
 }
 #blue = all
-#yellow = group 1 yellow
+#gold = group 1 gold
 #green = group 2 purple
 #red = group 3 green
 #blue = group 4 red
 #purple = gropu 5 blue
 
 
-###add pval stars track 3
+###add pval track 3
 head(dtsum)
 dtsum$logp <- -log(dtsum$pvalcol)
 dim(dtsum)
@@ -505,7 +506,8 @@ str(allpeaktab)
 head(allpeaktab)
 maxy = max(allpeaktab$peak_y, na.rm = T)
 allpeaktab$peak_y <- allpeaktab$peak_y/maxy
-#allpeaktab$peak_y <- replace_na(allpeaktab$peak_y, 0)
+
+#Bonferoni's cutoff
 pval_cutoff <- (-log(0.05/(nrow(allpeaktab)*intv)))/maxy
 
 coords <- allpeaktab
@@ -514,7 +516,7 @@ for(i in 1:nrow(sorghumgenome)){
                y=coords[coords$Chromosome==sorghumgenome$Chromosome[i],]$peak_y, 
                sector.index=sorghumgenome$Chromosome[i], 
                track.index = 3,
-               type = "l", col = "blue")
+               type = "l", col = "black")
   print(paste(i/nrow(sorghumgenome)))
 }
 
@@ -525,96 +527,10 @@ for(i in 1:nrow(sorghumgenome)){
   }
 
 
-text(0, 0, "Structure variations \n among \n 347 sorghums", cex = 2)
-text(0, 0.90, "Overall SV", cex = 1, srt = 90)
-text(0, 0.67, "Abundance", cex = 1, srt = 90)
-text(0, 0.40, "Chi-square", cex = 1, srt = 90)
-
-dev.off()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#add track X for number individual sweet 
-dim(background)
-head(stackpn)
-length(unique(stackpn$ind))
-stackpn_back <- merge(stackpn, background, by.y = "PI", by.x = "ind", all.x = T, all.y = F)
-sumstackpn_back_sweet <- stackpn_back[stackpn_back$Type == "Sweet", ] %>% group_by(chr, pos, end, svtype) %>% summarise(numindi = sum(values, na.rm = T))
-head(sumstackpn_back_sweet)
-table(stackpn_back$Type)
-
-totalindi_sweet <- length(na.omit(unique(stackpn_back[stackpn_back$Type == "Sweet", ]$ind)))
-
-sumstackpn_back_sweet$percent <- sumstackpn_back_sweet$numindi/totalindi_sweet
-
-circos.trackPlotRegion(ylim=c(0,1), bg.col=rep("white", 10), bg.border=rep("white",10))
-coords <- cbind(sorghumgenome, my.colors)
-for (i in 1:nrow(coords)) {
-  circos.rect(xleft=coords$start[i], ybottom=0,
-              xright=coords$end[i], ytop=1,
-              #sector.index=coords$Chromosome[i], col=my.colors[coords$my.colors[i]], border=NA,track.index=2)
-              sector.index=coords$Chromosome[i], col="white", border="white",track.index=3)
-}
-
-coords <- sumstackpn_back_sweet
-#coords <- dat5in[missing <= 0.2,]
-intv <- 100000
-allpeaktab <- c()
-for(i in 1:nrow(sorghumgenome)){
-  peaktab <- c()
-  for(j in seq(sorghumgenome$start[i], sorghumgenome$end[i], by = intv)){
-    tab <- coords[coords$chr == sorghumgenome$Chromosome[i] & coords$pos >= j & coords$pos < (j+intv),]
-    peaktab <- rbind.data.frame(peaktab, cbind.data.frame(as.character(sorghumgenome$Chromosome[i]), (j+(j+intv))/2, mean(tab$percent, na.rm = T)))
-    #peaktab <- rbind.data.frame(peaktab, cbind.data.frame(as.character(sorghumgenome$Chromosome[i]), (j+(j+intv))/2, mean(tab$sumpresent_sweet, na.rm = T)))
-    print(paste(i, j, sep = "_"))
-  }
-  allpeaktab <- rbind.data.frame(allpeaktab, peaktab)
-}
-colnames(allpeaktab) <- c("Chromosome", "mid_x", "peak_y")
-str(allpeaktab)
-#allpeaktab$peak_y <- allpeaktab$peak_y/totalindi
-allpeaktab$peak_y <- allpeaktab$peak_y/max(allpeaktab$peak_y, na.rm= T)
-
-coords <- allpeaktab
-for(i in 1:nrow(sorghumgenome)){
-  circos.lines(x=coords[coords$Chromosome==sorghumgenome$Chromosome[i],]$mid_x, 
-               y=coords[coords$Chromosome==sorghumgenome$Chromosome[i],]$peak_y, 
-               sector.index=sorghumgenome$Chromosome[i], 
-               track.index = 3,
-               type = "l", col = "gold")
-  print(paste(i/nrow(sorghumgenome)))
-}
-
-#add track 4 for number individual sweet and non-sweet
-#non-sweet
+#add cluster specific
+#add track 4
 circos.trackPlotRegion(ylim=c(0,1), bg.col=rep("white", 10), bg.border=rep("white",10))
 coords <- cbind(sorghumgenome, my.colors)
 for (i in 1:nrow(coords)) {
@@ -623,42 +539,82 @@ for (i in 1:nrow(coords)) {
               #sector.index=coords$Chromosome[i], col=my.colors[coords$my.colors[i]], border=NA,track.index=2)
               sector.index=coords$Chromosome[i], col="white", border="white",track.index=4)
 }
+functab <- read.xlsx("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/svlist_sigGO_1570.xlsx")
 
-#sumstackpn_back_nonsweet <- stackpn_back[stackpn_back$Type != "Sweet", ] %>% group_by(chr, pos, end, svtype) %>% summarise(numindi = sum(values, na.rm = T))
-head(sumstackpn_back_nonsweet)
-table(stackpn_back$Type)
-
-totalindi_nonsweet <- totalindi- totalindi_sweet
-
-sumstackpn_back_nonsweet$percent <- sumstackpn_back_nonsweet$numindi/totalindi_nonsweet
-
-coords <- sumstackpn_back_nonsweet
-#coords <- dat5in[missing <= 0.2,]
-intv <- 100000
-allpeaktab <- c()
-for(i in 1:nrow(sorghumgenome)){
-  peaktab <- c()
-  for(j in seq(sorghumgenome$start[i], sorghumgenome$end[i], by = intv)){
-    tab <- coords[coords$chr == sorghumgenome$Chromosome[i] & coords$pos >= j & coords$pos < (j+intv),]
-    peaktab <- rbind.data.frame(peaktab, cbind.data.frame(as.character(sorghumgenome$Chromosome[i]), (j+(j+intv))/2, mean(tab$percent, na.rm = T)))
-    #peaktab <- rbind.data.frame(peaktab, cbind.data.frame(as.character(sorghumgenome$Chromosome[i]), (j+(j+intv))/2, mean(tab$sumpresent_nonsweet, na.rm = T)))
-    print(paste(i, j, sep = "_"))
-  }
-  allpeaktab <- rbind.data.frame(allpeaktab, peaktab)
+for(i in 1:nrow(functab)){
+  functab$Chr[i] <- as.character(str_split(functab$eachsv[i], "_")[[1]][1])
+  functab$start[i] <- as.numeric(str_split(functab$eachsv[i], "_")[[1]][2])
+  functab$end[i] <-   as.numeric(str_split(functab$eachsv[i], "_")[[1]][3])
+  functab$svtype[i] <- as.character(str_split(functab$eachsv[i], "_")[[1]][4])
+  functab$mid[i] <- (functab$start[i] + functab$end[i])/2
+  functab$funcdiff[i] <- abs(functab$mid[i+1]-functab$mid[i])
 }
-colnames(allpeaktab) <- c("Chromosome", "mid_x", "peak_y")
-str(allpeaktab)
-allpeaktab$peak_y <- allpeaktab$peak_y/max(allpeaktab$peak_y, na.rm= T)
-#allpeaktab$peak_y <- allpeaktab$peak_y/totalindi
-coords <- allpeaktab
-for(i in 1:nrow(sorghumgenome)){
-  circos.lines(x=coords[coords$Chromosome==sorghumgenome$Chromosome[i],]$mid_x, 
-               y=coords[coords$Chromosome==sorghumgenome$Chromosome[i],]$peak_y, 
-               sector.index=sorghumgenome$Chromosome[i], 
-               track.index = 4,
-               type = "l", col = "green4")
-  print(paste(i/nrow(sorghumgenome)))
+functab$funcdiff[nrow(functab)] <- functab$start[nrow(functab)]
+
+sum(functab$overGO != "")
+sum(functab$eachpvalwithoutNA < 0.05 & functab$overthreshold_list %in% c(1:5) & !is.na(functab$genes))
+
+#add color
+
+functab$functabcol <- ifelse(functab$overthreshold_list == 1, "gold", 
+                 ifelse(functab$overthreshold_list == 2, "purple", 
+                        ifelse(functab$overthreshold_list == 3, "green", 
+                               ifelse(functab$overthreshold_list == 4, "red", 
+                                      ifelse(functab$overthreshold_list == 5, "blue", NA)))))
+#only 120 unique effect function
+functab <- functab[functab$eachpvalwithoutNA < 0.05 & functab$overthreshold_list %in% c(1:5) & !is.na(functab$genes),]
+table(functab$Chr)
+
+functab$eachsvshort <- paste(functab$start, functab$svtype, sep = "_")
+#label affected and significant genes
+for(i in 1:nrow(functab)){
+  circos.text(#x=functab$start[i], 
+    x=functab$mid[i], 
+    y=0.5, labels=functab$eachsvshort[i], 
+    sector.index=functab$Chr[i], track.index= 4, facing="clockwise", 
+    adj=c(0,0.), cex = 0.5, niceFacing = T, col = functab$functabcol[i])
 }
 
 
 
+
+labsorghum <- sorghumgenome
+labsorghum$cumend <- cumsum(labsorghum$end)
+labsorghum$cumstart <- labsorghum$cumend-labsorghum$end+1
+labsorghum
+gapdegree = 1
+
+degreetab <- c()
+for(i in 1:nrow(sorghumgenome)){
+  cellstart <- get.cell.meta.data("cell.start.degree",sector.index = sorghumgenome$Chromosome[i])-(gapdegree)
+  cellend <- get.cell.meta.data("cell.end.degree",sector.index = sorghumgenome$Chromosome[i])+(gapdegree)
+  degreetab <- rbind.data.frame(degreetab, 
+                                cbind.data.frame(sorghumgenome$Chromosome[i], cellstart, cellend, labsorghum$end[i]/(cellstart-cellend)))
+}
+degreetab
+colnames(degreetab) <- c("Chromosome", "cellstart", "cellend", "onedegree")
+degreetab[degreetab$Chromosome=="Chr03",]$onedegree <- labsorghum$end[which(labsorghum$Chromosome == "Chr03")]/((360-degreetab[degreetab$Chromosome=="Chr03",]$cellend)+degreetab[degreetab$Chromosome=="Chr03",]$cellstart)
+
+newfunctab <- merge(x= functab, y = labsorghum, by.x = "Chr", by.y = "Chromosome", all.x = T, suffixes = c("", "_chrom")) %>% mutate(newstart = start+cumstart, newend = end+cumstart)
+newfunctab <- merge(x= newfunctab, y= degreetab, by.x = "Chr", by.y = "Chromosome", all.x = T, suffixes = c("", "_degree"))
+newfunctab  <- newfunctab %>% mutate(startdegree = (cellstart-(start/(onedegree)))) %>% 
+  mutate(enddegree = (cellstart-(end/(onedegree))))
+
+
+for(i in 1:nrow(newfunctab)){
+  #for(i in 1:8){
+  input <- newfunctab$startdegree[i]
+  inputend <- newfunctab$enddegree[i]
+  draw.sector(start.degree=input, 
+              end.degree=(input+0.1), 
+              #end.degree = inputend,
+              col = functab$functabcol[i], border = NA, clock.wise = F,
+              rou1 = 0.55, rou2 = 0.333)
+}
+
+text(0, 0, "Genomic \n structure variations \n among \n 347 sorghums", cex = 2)
+text(0, 0.90, "Overall SV", cex = 1, srt = 90)
+text(0, 0.67, "Abundance", cex = 1, srt = 90)
+text(0, 0.40, "Chi-square", cex = 1, srt = 90)
+
+dev.off()
