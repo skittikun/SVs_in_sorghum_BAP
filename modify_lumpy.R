@@ -1,8 +1,3 @@
-library(multcomp)
-library(multcompView)
-library(Hmisc)
-library(gridExtra)
-library("viridis")
 library(stringi)
 library(stringr)
 library(plyr)
@@ -19,35 +14,6 @@ library(parallel)
 library(iterators)
 library(foreach)
 library(doParallel)
-library(IRanges)
-library(GenomicRanges)
-library(plyr)
-library(stringi)
-library(stringr)
-library(lme4)
-library(lmerTest)
-library(betareg)
-library(seqinr)
-library(vcfR)
-library(seqinr)
-library(devtools)
-library(pROC)
-library(Epi)
-library(VennDiagram)
-library(gridExtra)
-library(eulerr)
-library(stringdist)
-library(reshape2)
-library(gtools)
-library(stringdist)
-library(RecordLinkage)
-library(radmixture)
-library(FactoMineR)
-library(scatterplot3d)
-library(RColorBrewer)
-library(scales)
-library(circlize)
-library(DescTools)
 
 options(stringsAsFactors = F)
 split = detectCores()
@@ -69,32 +35,11 @@ startline <- function(filepath){
   return(readstart)
 }
 
-dt <- "/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/zeroone_352.txt"
-dat <- read.table(dt, quote = "", fill = T, header = T, sep = "\t", na.strings=c("","NA"), stringsAsFactors=FALSE, comment.char = "", check.names = F)#, skip = (startline(dt)-1))
-dat$INFO <- gsub(";IMPRECISE", ";IMPRECISE=1", gsub(";SECONDARY", ";SECONDARY=1", dat$INFO))
+dt <- "/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/352nocheck.vcf"
 
-          #checkdat
-          dat$prpos <- NULL
-          dat$prend <- NULL
-          dat[1:10,]
-          sum(dat$pe >= 3)
-          hist(dat$pe)
-          dupdat <- dat[dat$svtype == "DUP",]
-          dupdat[1:10,]
-          mafcut <- 0.05
-          missingcut <- 0.2 #0.05
-          sizecut <- 100000
-          pecut <- 3
-          
-          dat$end <- ifelse(dat$svtype == "BND", dat$pos, dat$end)
-          dat$svlen <- dat$end -dat$pos
-    
-          fildt <- dat[dat$maf_col >= mafcut & dat$missing_col <= missingcut & dat$svlen <= sizecut & dat$pe >= pecut, ]
-          dim(fildt)
-          fildupdat <- fildt[fildt$svtype == "DUP",]
-          fildupdat[1:10,]
-          hist(fildupdat$svlen)
-          #
+#dt <- "/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/352precise.vcf"
+dat <- read.table(dt, quote = "", fill = T, header = T, sep = "\t", na.strings=c("","NA"), stringsAsFactors=FALSE, comment.char = "", check.names = F, skip = (startline(dt)-1))
+dat$INFO <- gsub(";IMPRECISE", ";IMPRECISE=1", gsub(";SECONDARY", ";SECONDARY=1", dat$INFO))
 
 #split backbone from d1
 
@@ -126,29 +71,35 @@ forname_df
 sdat <- dat
 for(i in length(forsep_df):1){
   sdat <- sdat %>% separate(INFO, c("INFO", forname_df[i]), sep = forsep_df[i])
-  print(paste(i, i/length(forsep_df), sep = "_"))
-  }
+}
 
 sdat <- sdat %>% separate(INFO, c("INFO", "end"), sep = ";END=") %>% separate(INFO, c("svtype", "svlen"), sep = ";SVLEN=") 
 sdat$svtype <- gsub("SVTYPE=", "", sdat$svtype)
-colnames(sdat)[c(1:7, 27)] <- c("chr", "pos", "ID", "ref", "alt", "qual", "filter", "format")
-sdat[1:20, 1:29]
+colnames(sdat)[c(1:7)] <- c("chr", "pos", "ID", "ref", "alt", "qual", "filter")
+colnames(sdat) <- tolower(colnames(sdat))
 
-#k = (which(colnames(sdat) == "format")+1)
-#sdat[,k]
+#pe cutoff
+pecutoff <- 3
+sdat <- sdat[sdat$pe >= pecutoff,]
 
-write.table(sdat, "/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/terra_sort_merge_CNV_352_add.vcf", row.names = F, sep = "\t", quote = F)
+k = (which(colnames(sdat) == "format")+1)
+k
 
-#convert to 0/1
+sdat <- sdat[,!(colnames(sdat) %in% c("prpos", "prend"))]
+
+#convert to 0/1 and -1
 depthcutoff <- 10
 for(k in (which(colnames(sdat) == "format")+1):ncol(sdat)){
-  homalttf <- grepl("1/1", sdat[,colnames(sdat)[k]])
-  tmptab <- (as.data.frame(do.call(rbind, str_split(sdat[,colnames(sdat)[k]], ":" )),stringsAsFactors=FALSE))
-  deptheach <- tmptab[,5]
-  deptheachtf <- deptheach >= depthcutoff
-  sdat[,colnames(sdat)[k]] <- ifelse(homalttf & deptheachtf, 1, ifelse(!homalttf & deptheachtf, 0, NA))
-  print(paste(k, k/ncol(sdat), sep = "_"))
+oneone <- grepl("1/1", sdat[,colnames(sdat)[k]])
+zeroone <- grepl("0/1", sdat[,colnames(sdat)[k]])
+zerozero <- grepl("0/0", sdat[,colnames(sdat)[k]])
+tmptab <- (as.data.frame(do.call(rbind, str_split(sdat[,colnames(sdat)[k]], ":" )),stringsAsFactors=FALSE))
+deptheach <- tmptab[,5]
+deptheachtf <- deptheach >= depthcutoff
+sdat[,colnames(sdat)[k]] <- ifelse(oneone & deptheachtf, 1, ifelse(zerozero & deptheachtf, -1, ifelse(zeroone & deptheachtf, 0, NA)))
+print(paste(k, k/ncol(sdat), sep = "_"))
 }
+
 
 head(sdat)
 sum(sdat[,(which(colnames(sdat) == "format")+1):ncol(sdat)] == 1, na.rm = T)
@@ -168,79 +119,15 @@ missing_col <- round(rowSums(is.na(sdat[,(which(colnames(sdat) == "format")+1):n
 sum(missing_col <= 0.20, na.rm = T)
 sum(maf_col >= 0.05 & missing_col <= 0.20, na.rm = T)
 
+#add end for BND
+sdat$end <- ifelse(sdat$svtype == "BND", sdat$pos, sdat$end)
+
 alldat <- cbind.data.frame(sdat, maf_col, missing_col)
-dim(alldat)
+write.table(alldat, "/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/zeroone_352_pruned_pe3_dp10.txt", row.names = F, sep = "\t", quote = F)
+
 fil_sdat <- sdat[maf_col >= 0.05 & missing_col <= 0.20,]
-dim(fil_sdat)
-
-table(fil_sdat$svtype)
 #write.table(fil_sdat, "/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/fil_352.txt", row.names = F, sep = "\t", quote = F)
-write.table(fil_sdat, "/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/fil_352.txt", row.names = F, sep = "\t", quote = F)
-write.table(alldat, "/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/zeroone_352.txt", row.names = F, sep = "\t", quote = F)
-
-
-dt <- "/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/zeroone_352.txt"
-dat <- read.table(dt, quote = "", fill = T, header = T, sep = "\t", na.strings=c("","NA"), stringsAsFactors=FALSE, comment.char = "", check.names = F)
-sum(dat$maf_col >= 0.05, na.rm = T)
-sum(dat$missing_col <= 0.2, na.rm = T)
-sum(dat$maf_col >= 0.05 & dat$missing_col <= 0.2, na.rm = T)
-dat[is.na(dat$end),]$end <- dat[is.na(dat$end),]$pos + 100000
-dat[is.na(dat$pos),]$pos <- dat[is.na(dat$pos),]$end + 100000
-dat$svlen <- dat$end - dat$pos
-
-mafcut <- 0.05
-missingcut <- 0.2 #0.05
-sizecut <- 100000
-fildt <- dat[dat$maf_col >= mafcut & dat$missing_col <= missingcut, ]
-fildt$end <- ifelse(fildt$svtype == "BND", fildt$pos, fildt$end)
-fildt$svlen <- fildt$end -fildt$pos
-fildt <- fildt[is.na(fildt$imprecise),]
-fildt <- fildt[fildt$pe >= 3,]
-fildt <- fildt[fildt$svlen <= sizecut, ]
-dim(fildt)
-head(fildt)
-sum(is.na(fildt$end))
-sum(is.na(fildt$pos))
-
-head(dat)
-altref <- cbind.data.frame(c("Chr04", "Chr04", "Chr04"), c("Sobic.004G301500", "Sobic.004G301600", "Sobic.004G301650"), c(64031808, 64036221, 64038396), c(64032785, 64037462, 64039002)) %>% setNames(c("chr", "gene", "pos", "end"))
-
-#editrange <- dat[dat$end >= dat$pos, ]
-#rangedat <- GRanges(seqnames = editrange$chr, ranges = IRanges(editrange$pos, editrange$end))
-#rangefildat <- GRanges(seqnames = fildt$chr, ranges = IRanges(fildt$pos, fildt$end))
-#rangealtref <- GRanges(seqnames = altref$chr, ranges = IRanges(altref$pos, altref$end))
-
-#altoverdat <- findOverlapPairs(rangedat, rangealtref)
-#altoverdatfil <- findOverlapPairs(rangefildat, rangealtref)
-
-vitoverfildt <- c()
-for(r in 1:nrow(altref)){
-  #vitoverfildt <- rbind.data.frame(vitoverfildt, fildt[fildt$chr == altref$chr[r] & fildt$pos <= altref$end[r] & fildt$end >= altref$pos[r], ])
-  vitoverfildt <- rbind.data.frame(vitoverfildt, dat[dat$chr == altref$chr[r] & dat$pos <= altref$end[r] & dat$end >= altref$pos[r], ])
-  vitoverfildt <- vitoverfildt[!duplicated(vitoverfildt),]
-}
-
-vitfil <- (vitoverfildt[vitoverfildt$maf_col >= mafcut & abs(vitoverfildt$svlen) <= sizecut & vitoverfildt$missing_col <= missingcut,])
-dim(vitfil)
-table(vitfil$svtype)
-sumvit <- colSums(vitfil[, (which(colnames(vitfil) == "format")+1):(which(colnames(vitfil) == "rio"))], na.rm = T)
-sum(sumvit == 0)
-sum(sumvit != 0)
-
-vitfil[vitfil$svtyp != "BND",]
-sumvit2 <- colSums(vitfil[vitfil$svtyp != "BND",(which(colnames(vitfil) == "format")+1):(which(colnames(vitfil) == "rio"))], na.rm = T)
-sum(sumvit2 == 0)
-sum(sumvit2 != 0)
-
-summary(vitoverfildt$maf_col)
-summary(vitoverfildt$missing_col)
-
-sumvitdt <- cbind.data.frame(gsub("", "", names(sumvit)), as.data.frame(sumvit)) %>% setNames(c("PI", "sumvit"))
-
-fil_sdat <- read.table("/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/fil_352.txt", header = T, sep = "\t", na.strings=c("","NA"), stringsAsFactors=FALSE, comment.char = "", check.names = F)
-dim(fil_sdat)
-str(fil_sdat)
-table(fil_sdat$svtype)
+write.table(fil_sdat, "/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/fil_352_nocheck.txt", row.names = F, sep = "\t", quote = F)
 
 
 
@@ -250,8 +137,9 @@ gff <- read.table("/users/ksongsom/Ref_Genomes/BTx/gene_anno.txt", quote = "", f
 pn <- fil_sdat
 
 #with BND has no end add the length for 100kb
-pn[is.na(pn$end),]$end <- pn[is.na(pn$end),]$pos + 100000
-pn[is.na(pn$pos),]$pos <- pn[is.na(pn$pos),]$end + 100000
+#pn[is.na(pn$end),]$end <- pn[is.na(pn$end),]$pos + 100000
+#pn[is.na(pn$pos),]$pos <- pn[is.na(pn$pos),]$end + 100000
+pn$end <- ifelse(pn$svtype == "BND", pn$pos, pn$end)
 
 crops <-c()
 
@@ -364,12 +252,11 @@ tab180$chr
 #tab180 <- tab180[!duplicated(tab180),]
 #save overlap
 #write.table(tab180,paste("/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/352_go180.txt", sep = ""), row.names = F, sep = "\t", quote = F)
-write.table(tab180,paste("/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/352_go180.txt", sep = ""), row.names = F, sep = "\t", quote = F)
+write.table(tab180,paste("/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/352_go180_nocheck.txt", sep = ""), row.names = F, sep = "\t", quote = F)
 
 print("DONE")
 
-tab180 <- read.csv("/Users/ksongsom/OneDrive/postdoc/SV/illumina/lumpy/352_go180.txt", header = T, stringsAsFactors = F, na.strings=c("","NA"), sep = "\t", check.names = F)
-tab180f <- tab180[abs(tab180$svlen) <= 100000,]
+
 #check sugar
 #sugargene <- read.csv("/Users/ksongsom/OneDrive/postdoc/VIT/sugargenes_clean.csv", header = T, stringsAsFactors = F, na.strings=c("","NA"), sep = "\t")
 sugargene <- read.csv("/projects/cooper_research1/ksongsom/speedseq_result/TERRA/vcf/merge/sugargenes_clean.csv", header = T, stringsAsFactors = F, na.strings=c("","NA"), sep = "\t")
@@ -377,7 +264,5 @@ sugargene$genes
 tab180$genes
 sum(grepl(paste(sugargene$genes, collapse = "|"), tab180$genes))
 
-tab180sugar <- tab180f[grepl(paste(sugargene$genes, collapse = "|"), tab180f$genes),]
-dim(tab180sugar)
-table(tab180sugar$svtype)
-hist(tab180sugar$svlen)
+stopCluster(cl)
+
