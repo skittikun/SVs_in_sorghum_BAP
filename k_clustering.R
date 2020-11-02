@@ -241,5 +241,6 @@ dim(df)
             dev.off()
             tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pc14.tiff", width=10, height=10, units="in", res=300)
             plot14
+
             dev.off()
             
