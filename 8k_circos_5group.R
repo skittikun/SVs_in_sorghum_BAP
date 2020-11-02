@@ -70,8 +70,23 @@ head(bc_sub)
 bc_sub$PI[(bc_sub$PI %in% colnames(pnin))]
 sum(colnames(pnin) %in% cluster$PI)
 
+#load snp and sv diversity
+windowdat <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pi_window_snp_820.rds")
+windowdat_sv <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv.rds")
+
+#remove row with now snp
+windowsize <- 500000
+windowdat[windowdat$size == 1,]$sum_pi <- NA
+windowdat[windowdat$size == 1,]$size <- NA
+
+windowdat_sv[windowdat_sv$size == 1,]$sum_pi <- NA
+windowdat_sv[windowdat_sv$size == 1,]$size <- NA
+
+windowdat_sv$pi_per_window <- (windowdat_sv$sum_pi/windowsize)
+windowdat$pi_per_window <- (windowdat$sum_pi/windowsize)
+
 #plot circos
-tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/8k_pval_5groups_fixedpval_sv.tiff", width=20, height=15, units="in", res=300)
+tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/8k_pval_5groups_fixedpval_sv_noname_with_pi.tiff", width=20, height=15, units="in", res=300)
 
 #setup the template
 gapdegree = 1
@@ -174,16 +189,43 @@ colnames(allpeaktab) <- c("Chromosome", "mid_x", "peak_y")
 str(allpeaktab)
 head(allpeaktab)
 allpeaktab$peak_y <- allpeaktab$peak_y/max(allpeaktab$peak_y, na.rm = T)
-#allpeaktab$peak_y <- replace_na(allpeaktab$peak_y, 0)
-coords <- allpeaktab
+
+#SV abundance
+#coords <- allpeaktab
+#for(i in 1:nrow(sorghumgenome)){
+#  circos.lines(x=coords[coords$Chromosome==sorghumgenome$Chromosome[i],]$mid_x, 
+#               y=coords[coords$Chromosome==sorghumgenome$Chromosome[i],]$peak_y, 
+#               sector.index=sorghumgenome$Chromosome[i], 
+#               track.index = 1,
+#               type = "l", col = "dark blue", cex = 2)
+#  print(paste(i/nrow(sorghumgenome)))
+#}
+
+#add pi of both snp and sv
+windowdat$mid_x <- (windowdat$upper + windowdat$lower)/2
+windowdat$peak_y <- windowdat$pi_per_window/max(windowdat$pi_per_window, na.rm = T)
+coords <- windowdat
 for(i in 1:nrow(sorghumgenome)){
-  circos.lines(x=coords[coords$Chromosome==sorghumgenome$Chromosome[i],]$mid_x, 
-               y=coords[coords$Chromosome==sorghumgenome$Chromosome[i],]$peak_y, 
+  circos.lines(x=coords[coords$windowchr==sorghumgenome$Chromosome[i],]$mid_x, 
+               y=coords[coords$windowchr==sorghumgenome$Chromosome[i],]$peak_y, 
                sector.index=sorghumgenome$Chromosome[i], 
                track.index = 1,
-               type = "l", col = "dark blue")
+               type = "l", col = "gold", cex = 1)
   print(paste(i/nrow(sorghumgenome)))
 }
+
+windowdat_sv$mid_x <- (windowdat_sv$upper + windowdat_sv$lower)/2
+windowdat_sv$peak_y <- windowdat_sv$pi_per_window/max(windowdat_sv$pi_per_window, na.rm = T)
+coords <- windowdat_sv
+for(i in 1:nrow(sorghumgenome)){
+  circos.lines(x=coords[coords$windowchr==sorghumgenome$Chromosome[i],]$mid_x, 
+               y=coords[coords$windowchr==sorghumgenome$Chromosome[i],]$peak_y, 
+               sector.index=sorghumgenome$Chromosome[i], 
+               track.index = 1,
+               type = "l", col = "dark blue", cex = 1)
+  print(paste(i/nrow(sorghumgenome)))
+}
+
 
 #table of 5 groups
 table(bc_sub$k5_cluster_all)
@@ -612,9 +654,9 @@ for(i in 1:nrow(newfunctab)){
               rou1 = 0.55, rou2 = 0.333)
 }
 
-text(0, 0, "Genomic \n structure variations \n among \n 347 sorghums", cex = 2)
-text(0, 0.90, "Overall SV", cex = 1, srt = 90)
-text(0, 0.67, "Abundance", cex = 1, srt = 90)
-text(0, 0.40, "Chi-square", cex = 1, srt = 90)
+#text(0, 0, "Genomic \n structural variations \n among \n 347 sorghums", cex = 2)
+#text(0, 0.90, "Overall SV", cex = 1, srt = 90)
+#text(0, 0.67, "Abundance", cex = 1, srt = 90)
+#text(0, 0.40, "Chi-square", cex = 1, srt = 90)
 
 dev.off()
