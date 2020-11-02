@@ -1,212 +1,245 @@
-library(sf)
-library(raster)
-library(dplyr)
-library(tmap)
-library(leaflet)
-library(cartogram)
-library(rworldmap)
-library(rworldxtra)
-library(plyr)
+library(multcomp)
+library(multcompView)
+library(Hmisc)
 library(gridExtra)
-#library(ggtree)
+library("viridis")
+library(stringi)
+library(stringr)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(lme4)
+library(lmerTest)
+library(betareg)
+library(seqinr)
+library(vcfR)
+library(seqinr)
+library(devtools)
+library(parallel)
+library(iterators)
+library(foreach)
+library(doParallel)
+library(IRanges)
+library(GenomicRanges)
+library(plyr)
+library(stringi)
+library(stringr)
+library(lme4)
+library(lmerTest)
+library(betareg)
+library(seqinr)
+library(vcfR)
+library(seqinr)
+library(devtools)
+library(pROC)
+library(Epi)
+library(VennDiagram)
+library(gridExtra)
+library(eulerr)
+library(stringdist)
 library(reshape2)
-library(scatterpie)
-library(colorspace)
-library(DescTools)
-library(ggplot2)
+library(gtools)
+library(stringdist)
+library(RecordLinkage)
+library(radmixture)
+library(FactoMineR)
+library(scatterplot3d)
+library(RColorBrewer)
 library(scales)
-library(spData)
+library(circlize)
+library(DescTools)
+library(ggbiplot)
+library(tidyverse)  # data manipulation
+library(cluster)    # clustering algorithms
+library(factoextra)
+library(readxl)
+library(openxlsx)
+
+
 
 options(stringsAsFactors = F)
-background <- read.csv("/Users/ksongsom/OneDrive/postdoc/NAM/Panel/BAP/PanelAccessions-BAP.csv", header = T, stringsAsFactors = F)
-background$PI <- gsub("RIO","rio", gsub(paste(c("PI_", "-dark"), collapse = "|"),"", background$Taxa))
-table(background$Origin)
-coor <- read.csv("/Users/ksongsom/OneDrive/postdoc/programs/country-capitals.csv", header = T)
-head(coor)
-sum(background$Origin %in% coor$CountryName)
 
-#update map center of country if province is NA
-mapdata <- read.csv("/Users/ksongsom/OneDrive/postdoc/publication/terra/code/files/map_plot347_middle.csv")
-mapdata$coordinate <- paste(mapdata$lat, mapdata$lon, sep = ", ")
+fildt <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/code/files/347_go.rds")
+fildt <- fildt[fildt$svlen>= 50,]
 
-mapdata$Country[which(!(mapdata$Country %in% coor$CountryName))]
-head(mapdata)
-dim(mapdata)
-head(coor)
-dim(mapdata)
+#load map
+map <- (read_excel("/Users/ksongsom/OneDrive/postdoc/NAM/Panel/BAP/update_sorghum_location.xlsx", sheet = 1)) #from google sheet
+#update elevation
+map$ID <- gsub("PI ", "", map$Genotype)
+head(map)
+map <- map %>% separate(Coordinate, c("lat", "lon"), sep = ", ")
 
-#capital
-cmapdata <- merge(mapdata, coor, by.x = "Country", by.y = "CountryName", all.x = T, all.y = F)
-dim(cmapdata)
-cmapdata[1:3,]
+table(fildt[is.na(fildt$end), ]$svtype)
+head(fildt)
+dim(fildt)
+mafcut <- 0.05
+missingcut <- 0.2 #0.05
+sizecut <- 100000
+table(fildt$svtype)
+fildt <- fildt[fildt$maf_col >= mafcut & fildt$missing_col <= missingcut, ]
+fildt$end <- ifelse(fildt$svtype == "BND", fildt$pos, fildt$end)
+fildt$svlen <- fildt$end -fildt$pos
+colnames(fildt) <- gsub("X", "", colnames(fildt))
+fildtinfo <- fildt[, (which(colnames(fildt) == "format")+1):which(colnames(fildt) == "Rio")]
+tfildtinfo <- t(fildtinfo)
+rownames(tfildtinfo) <- gsub("X", "", rownames(tfildtinfo))
+colnames(tfildtinfo) <- fildt$id
+df <- tfildtinfo
+df <- df[!(rownames(df) %in% names(which(rowSums(df, na.rm = T) == 0))),]
+dim(df)
 
-#middle of all countries
-mid <- read.csv("/Users/ksongsom/OneDrive/postdoc/publication/terra/code/files/middle_database.csv")
+      df[is.na(df)] <- 0
+      df <- na.omit(df)
+      df <- scale(df)
+      distance <- factoextra::get_dist(df)
+ 
+      #define number of k
+      set.seed(123)
+      
+      # function to compute total within-cluster sum of square 
+      wss <- function(k) {
+        kmeans(df, k, nstart = 10 )$tot.withinss
+      }
+      # Compute and plot wss for k = 1 to k = 15
+      k.values <- 1:15
+      # extract wss for 2-15 clusters
+      wss_values <- map_dbl(k.values, wss)
+      plot(k.values, wss_values,
+           type="b", pch = 19, frame = FALSE, 
+           xlab="Number of clusters K",
+           ylab="Total within-clusters sum of squares")
+      
+      #factoextra::fviz_nbclust(df, kmeans, method = "wss")
+      factoextra::fviz_nbclust(df, kmeans, method = "silhouette") #the optimal number of clusters is 5
+      
+      
+      k5 <- kmeans(df, centers = 5, nstart = 25)
 
-world <- map_data('world')
-p <- ggplot(world, aes(long, lat)) +
-  geom_map(map=world, aes(map_id=region), fill="white", color=NA) +
-  coord_quickmap() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-                           panel.grid.minor = element_blank(), axis.line = element_line(colour = "white"))
-  
-p
-
-mapdata[1:3,]
-head(mapdata)
-
-#aggregate clusters with countries
-mapdata$cluster <- paste("cluster", mapdata$k5g, sep = "_")
-newmap <- dcast(mapdata, Country ~ cluster, value.var = "k5g")
-
-#size of each pie plot
-newmap$radius <- rescale(scale(rowSums(newmap[,-1])), to = c(3, 10))
-head(newmap)
-
-newmap <- merge(newmap, mid, by.x = "Country", by.y = "name", all.x = T, all.y = F)
-tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/world_dis_mid.tiff", width=7, height=5, units="in", res=300)
-p + geom_scatterpie(aes(x=longitude, y=latitude, r = radius),
-                    data=newmap, alpha=.8, cols = paste("cluster", 1:5, sep = "_"),  color=NA) +
-  labs(y = "Latitude", x = "Longitude") +
-  scale_fill_manual("5 clusters", breaks = c("cluster_1", "cluster_2", "cluster_3", "cluster_4", "cluster_5"),
-  labels = c("cluster_1", "cluster_2", "cluster_3", "cluster_4", "cluster_5"),
-  values = c("cluster_1" = "gold",
-             "cluster_2" = "purple",
-             "cluster_3" = "green",
-             "cluster_4" = "red",
-             "cluster_5" = "blue"))
-dev.off()
-
-#zoom Africa
-africamap <- cmapdata[cmapdata$ContinentName == "Africa",]
-mapdata$coordinate <- paste(mapdata$lat, mapdata$lon, sep = "_")
-newmap2 <- dcast(mapdata, coordinate ~ cluster, value.var = "k5g")
-head(newmap2)
-#newmap$radius <- rowSums(newmap[,-1])*5/(max(rowSums(newmap[,-1])))
-
-newmap2$radius <- rescale(scale(rowSums(newmap2[,-1])), to = c(1,3))#scale(rowSums(newmap[,-1]))
-
-newmap2 <- merge(newmap2, mapdata, by.x = "coordinate", by.y = "coordinate", all.x = T, all.y = F)
-
-
-mapaf<- get_map(location = c(lon = mean(africamap$CapitalLongitude, na.rm = T), lat = mean(africamap$CapitalLatitude, na.rm = T)), zoom = 3,
-                       maptype = "terrain", scale = 4)
-mapaf2<- get_map(location = c(lon = mean(africamap$CapitalLongitude, na.rm = T), lat = mean(africamap$CapitalLatitude, na.rm = T)), zoom = 3,
-                maptype = "hybrid", scale = 4)
-afmap <- ggmap(mapaf) +
-  scale_x_continuous(limits = c(-20, 60)) +
-  scale_y_continuous(limits = c(-35, 40))
-
-
-tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/africa_dis_mid.tiff", width=7, height=5, units="in", res=300)
-afmap + geom_scatterpie(aes(x=lon, y=lat, r = radius),
-                        data=newmap2, alpha=.8, cols = paste("cluster", 1:5, sep = "_"),  color=NA) +
-  labs(y = "Latitude", x = "Longitude") +
-  scale_fill_manual("5 clusters", breaks = c("cluster_1", "cluster_2", "cluster_3", "cluster_4", "cluster_5"),
-                    labels = c("cluster_1", "cluster_2", "cluster_3", "cluster_4", "cluster_5"),
-                    values = c("cluster_1" = "gold",
-                               "cluster_2" = "purple",
-                               "cluster_3" = "green",
-                               "cluster_4" = "red",
-                               "cluster_5" = "blue"))
-dev.off()
-
-
-
-
-gb1 <- p + geom_scatterpie(aes(x=longitude, y=latitude, r = radius),
-                    data=newmap, alpha=.8, cols = paste("cluster", 1:5, sep = "_"),  color=NA) +
-  labs(y = "Latitude", x = "Longitude") +
-  scale_fill_manual("5 clusters", breaks = c("cluster_1", "cluster_2", "cluster_3", "cluster_4", "cluster_5"),
-                    labels = c("cluster_1", "cluster_2", "cluster_3", "cluster_4", "cluster_5"),
-                    values = c("cluster_1" = "gold",
-                               "cluster_2" = "purple",
-                               "cluster_3" = "green",
-                               "cluster_4" = "red",
-                               "cluster_5" = "blue"), guide = FALSE)
-gb1
-gb2 <- afmap + geom_scatterpie(aes(x=lon, y=lat, r = radius),
-                        data=newmap2, alpha=.8, cols = paste("cluster", 1:5, sep = "_"),  color=NA) +
-  labs(y = "Latitude", x = "Longitude") +
-  scale_fill_manual("5 clusters", breaks = c("cluster_1", "cluster_2", "cluster_3", "cluster_4", "cluster_5"),
-                    labels = c("cluster_1", "cluster_2", "cluster_3", "cluster_4", "cluster_5"),
-                    values = c("cluster_1" = "gold",
-                               "cluster_2" = "purple",
-                               "cluster_3" = "green",
-                               "cluster_4" = "red",
-                               "cluster_5" = "blue")) +
-  theme(legend.position = c(0.2,0.25))
-gb2
-
-#combine the plots
-
-tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/world_africa_mid.tiff", width=7, height=14, units="in", res=300)
-grid.arrange(gb1, gb2, nrow = 2)
-dev.off()
-
-#Elevation
-mapdata$coordinate <- paste(mapdata$lat, mapdata$lon, sep = "_")
-group_name <- c("<623", "623-1200", "1200-1820", "1820-2410", ">2410")
-mapdata$elegroup <- cut(mapdata$Elevation, breaks = 5, labels = group_name )
-
-newmap_ele <- dcast(mapdata, coordinate ~ elegroup, value.var = "k5g")
-head(newmap_ele)
-#newmap$radius <- rowSums(newmap[,-1])*5/(max(rowSums(newmap[,-1])))
-
-newmap_ele$radius <- rescale(scale(rowSums(newmap_ele[,-1])), to = c(1,3))#scale(rowSums(newmap[,-1]))
-
-newmap_ele <- merge(newmap_ele, mapdata, by.x = "coordinate", by.y = "coordinate", all.x = T, all.y = F)
-
-africamap <- newmap[newmap$ContinentName == "Africa",]
-
-mapaf<- get_map(location = c(lon = mean(africamap$CapitalLongitude, na.rm = T), lat = mean(africamap$CapitalLatitude, na.rm = T)), zoom = 3,
-                maptype = "terrain", scale = 4)
-afmap <- ggmap(mapaf) +
-  scale_x_continuous(limits = c(-20, 60)) +
-  scale_y_continuous(limits = c(-35, 40))
-
-
-tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/africa_dis_mid.tiff", width=7, height=5, units="in", res=300)
-afmap + geom_scatterpie(aes(x=lon, y=lat, r = radius),
-                        data=newmap_ele, alpha=.8, cols =group_name ,  color=NA) +
-  labs(y = "Latitude", x = "Longitude") +
-  scale_fill_manual("Elevation", breaks = group_name ,
-                    labels = group_name,
-                    values = c("<623" = "gold",
-                               "623-1200" = "purple",
-                               "1200-1820" = "green",
-                               "1820-2410" = "red",
-                               ">2410" = "blue"))
-dev.off()
-
-
-#phenotype correlations
-pheno16 <- read.csv("/Users/ksongsom/OneDrive/postdoc/NAM/Panel/BAP/pheno16.csv", header = T, stringsAsFactors = F, sep = ",")
-head(pheno16)
-pheno17 <- read.csv("/Users/ksongsom/OneDrive/postdoc/NAM/Panel/BAP/pheno17.csv", header = T, stringsAsFactors = F, sep = "\t")
-head(pheno17)
-background <- read.csv("/Users/ksongsom/OneDrive/postdoc/NAM/Panel/BAP/PanelAccessions-BAP.csv", header = T, stringsAsFactors = F)
-dim(pheno16)
-
-background$PI <- gsub("RIO","rio", gsub("-dark","", background$Taxa))
-sum(pheno16$PI %in% background$Taxa)
-sum(pheno16$PI %in% background$PI)
-pheno16$PI[which(!(pheno16$PI %in% background$PI))]
-
-dat_back <- merge(pheno16, background, by.y = "PI", by.x = "PI", all.x = T, all.y = F)
-dim(dat_back)
-
-#write.csv(dat_back, "/Users/ksongsom/OneDrive/postdoc/NAM/Panel/BAP/ID_oldmap.csv", row.names = F)
-#write.csv(dat_back[!duplicated(dat_back$PI),], "/Users/ksongsom/OneDrive/postdoc/NAM/Panel/BAP/ID_oldmap_unique.csv", row.names = F)
-
-
-mapdata[1:3,]
-fivetest <- c()
-for(i in which(colnames(mapdata)=="ADF"):which(colnames(mapdata)=="Hemicellulose")){
-inputdt <- na.omit(mapdata[,c(2,i)])
-tt <- colnames(mapdata)[i]
-pval <- kruskal.test(inputdt[,2] ~ inputdt[,1])$p.value
-sig <- ifelse(pval < 0.05/5, "*", NA)
-eachtest <- cbind.data.frame(tt, pval, sig)
-fivetest <- rbind.data.frame(fivetest, eachtest)
-}
-fivetest
+      #save clusters
+      #write.csv(k5, "/Users/ksongsom/OneDrive/postdoc/publication/terra/code/files/five_cluster.csv")
+           
+      # plots to compare
+      p4 <- factoextra::fviz_cluster(k5, geom = c("point", "text"),  data = df, repel = TRUE, labelsize = 8) + ggtitle("k = 5")
+      p4
+      
+      #different PC
+      #load cluster
+      cluster <- read.csv("/Users/ksongsom/OneDrive/postdoc/publication/terra/code/files/five_cluster.csv")
+      head(cluster)
+      dim(cluster)
+            
+      #run PCA      
+            pca_res <- PCA(df, graph = F)
+            PCdat <- as.data.frame(pca_res$ind$coord[,1:5])
+            PCdat$id <- rownames(PCdat)
+            PCdat <- merge(x = PCdat, y = cluster[,c("PI", "k5_cluster_all")], by.x = "id", by.y = "PI", all.x = T, all.y = F)
+            PCdat$clusters <- as.character(PCdat$k5_cluster_all)
+            
+            #making the text for %variance for axis labels
+            eigen <- as.data.frame(pca_res$eig)
+            
+            pc1 <- round(eigen[1,]$`percentage of variance`, digits = 1)
+            pc2 <- round(eigen[2,]$`percentage of variance`, digits = 1)
+            pc3 <- round(eigen[3,]$`percentage of variance`, digits = 1)
+            pc4 <- round(eigen[4,]$`percentage of variance`, digits = 1)
+            pc5 <- round(eigen[5,]$`percentage of variance`, digits = 1)
+            
+            pc1lab = paste("PC1 (", pc1,"%)", sep = "" )
+            pc1lab
+            pc2lab = paste("PC2 (", pc2,"%)", sep = "")
+            pc2lab
+            pc3lab = paste("PC3 (", pc3,"%)", sep = "")
+            pc3lab
+            pc4lab = paste("PC4 (", pc3,"%)", sep = "")
+            pc4lab
+            pc5lab = paste("PC5 (", pc5,"%)", sep = "")
+            pc5lab
+            
+            
+            #define the circle line
+            find_hull12 <- function(PCdat) PCdat[chull(PCdat[,2], PCdat[,3]), ]
+            hulls12 <- ddply(PCdat, "clusters", find_hull12)
+            
+            
+            find_hull15 <- function(PCdat) PCdat[chull(PCdat[,2], PCdat[,6]), ]
+            hulls15 <- ddply(PCdat, "clusters", find_hull15)
+            
+            plot12 <- ggplot(data = PCdat, aes(x = Dim.1, y = -1*Dim.2, col=clusters, 
+                                               fill=clusters, group=clusters)) +
+              geom_point(aes(shape=clusters), size = 3) + labs(x = pc1lab, y = pc2lab) +
+              scale_color_manual(breaks = c("1", "2", "3", "4", "5"),
+                                values=c("gold", "purple", "green", "red", "blue"))  + 
+              scale_fill_manual(breaks = c("1", "2", "3", "4", "5"),
+                                 values=c("gold", "purple", "green", "red", "blue"))  + 
+              geom_polygon(data = hulls12, alpha = 0.3) + theme_bw() +
+              theme(text = element_text(size=20))
+            
+            plot12
+            
+            plot15 <- ggplot(data = PCdat, aes(x = Dim.1, y = -1*Dim.5, col=clusters, 
+                                               fill=clusters, group=clusters)) +
+              geom_point(aes(shape=clusters), size = 3) + labs(x = pc1lab, y = pc5lab) +
+              scale_color_manual(breaks = c("1", "2", "3", "4", "5"),
+                                 values=c("gold", "purple", "green", "red", "blue")
+                                )  + 
+              scale_fill_manual(breaks = c("1", "2", "3", "4", "5"),
+                                values=c("gold", "purple", "green", "red", "blue")
+                                )  + 
+              geom_polygon(data = hulls15, alpha = 0.3) + theme_bw() +
+              theme(text = element_text(size=20))
+            
+            plot15
+            
+            #save tiff
+            tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pc12.tiff", width=10, height=10, units="in", res=300)
+            plot12
+            dev.off()
+            
+            tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pc15.tiff", width=10, height=10, units="in", res=300)
+            plot15
+            dev.off()
+            
+            tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/silhouette.tiff", width=10, height=10, units="in", res=300)
+            factoextra::fviz_nbclust(df, kmeans, method = "silhouette") +
+              theme(text = element_text(size=20))
+            dev.off()
+            
+            find_hull13 <- function(PCdat) PCdat[chull(PCdat[,2], PCdat[,4]), ]
+            hulls13 <- ddply(PCdat, "clusters", find_hull13)
+            plot13 <- ggplot(data = PCdat, aes(x = Dim.1, y = -1*Dim.3, col=clusters, 
+                                               fill=clusters, group=clusters)) +
+              geom_point(aes(shape=clusters), size = 3) + labs(x = pc1lab, y = pc3lab) +
+              scale_color_manual(breaks = c("1", "2", "3", "4", "5"),
+                                 values=c("gold", "purple", "green", "red", "blue")
+              )  + 
+              scale_fill_manual(breaks = c("1", "2", "3", "4", "5"),
+                                values=c("gold", "purple", "green", "red", "blue")
+              )  + 
+              geom_polygon(data = hulls13, alpha = 0.3) + theme_bw() +
+              theme(text = element_text(size=20))
+            
+            plot13
+            
+            find_hull14 <- function(PCdat) PCdat[chull(PCdat[,2], PCdat[,5]), ]
+            hulls14 <- ddply(PCdat, "clusters", find_hull14)
+            plot14 <- ggplot(data = PCdat, aes(x = Dim.1, y = -1*Dim.4, col=clusters, 
+                                               fill=clusters, group=clusters)) +
+              geom_point(aes(shape=clusters), size = 3) + labs(x = pc1lab, y = pc4lab) +
+              scale_color_manual(breaks = c("1", "2", "3", "4", "5"),
+                                 values=c("gold", "purple", "green", "red", "blue")
+              )  + 
+              scale_fill_manual(breaks = c("1", "2", "3", "4", "5"),
+                                values=c("gold", "purple", "green", "red", "blue")
+              )  + 
+              geom_polygon(data = hulls14, alpha = 0.3) + theme_bw() +
+              theme(text = element_text(size=20))
+            
+            plot14
+            
+            tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pc13.tiff", width=10, height=10, units="in", res=300)
+            plot13
+            dev.off()
+            tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pc14.tiff", width=10, height=10, units="in", res=300)
+            plot14
+            dev.off()
+            
