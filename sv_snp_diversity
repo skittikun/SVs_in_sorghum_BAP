@@ -1,0 +1,256 @@
+### An alternate calculation for Pi,
+### Using the Begun (2007) formula
+options(stringsAsFactors = F)
+vcf_snp <- read.table("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/out.012", sep = "\t", header = F, row.names = F)
+pi=0 
+for (i in 1:nrow(sampleVCF)) { # Now I will use a for loop to go through each site, like we usually do
+    g1=get.genotypes(as.vector(sampleVCF[i,], mode="character"), start=g.start, end=g.end, format=sampleVCF[i,f.column]) # Get the genotypes (typical usage)
+    if (length(grep("\\.", g1)) > 0) {
+        g1=g1[-(grep("\\.", g1))] # Get rid of missing genotypes if there are any
+    }
+    alleles=unlist(strsplit(g1, split="/")) # Split the genotypes up so that we have a separate character for each allele
+    j=length(grep("1", alleles)) # Get the minor allele count
+    n=length(alleles) # Get the total number of alleles 
+    x=((2*j)*(n-j))/(n*(n-1)) # Get the calculation of 2j(n-j)/n(n-1) for this one site
+    pi=pi+x # Add the count to the sum outside of the loop
+}
+alt.pi.bp=pi/6268 # Divide the total count for all sites by the number of base pairs in the sequence
+
+#read line by line
+library(dplyr)
+library(tidyr)
+library(stringr)
+options(stringsAsFactors=F)
+
+#sorghum chromosome
+sorghumgenome <- as.data.frame(cbind(c(paste("Chr0", 1:9, sep = ""), "Chr10"), rep(1, 10),c(80884392, 77742459, 74386277, 68658214, 71854669, 61277060, 65505356,62686529,59416394,61233695)))
+colnames(sorghumgenome) <- c("Chromosome", "start", "end")
+sorghumgenome$Chromosome <- as.factor(sorghumgenome$Chromosome)
+sorghumgenome$start <- as.numeric(as.character(sorghumgenome$start))
+sorghumgenome$end <- as.numeric(as.character(sorghumgenome$end))
+
+windowsize <- 500000
+windowdat <- c()
+for(i in 1:nrow(sorghumgenome)){
+  cutoff <- seq(sorghumgenome$start[i], sorghumgenome$end[i], by = windowsize)  
+  for(j in 1:(length(cutoff)-1)){
+    lower <- cutoff[j]
+    upper <- cutoff[j+1]-1
+    windowchr <- sorghumgenome$Chromosome[i]
+    windowname <- paste(sorghumgenome$Chromosome[i], j, sep = "_")
+    windowdat <- rbind.data.frame(windowdat, cbind.data.frame(windowname, windowchr, lower, upper))
+  }
+  }
+
+
+#make header names
+con = file("/scratch/ksongsom/terra_snp20/AllChr_snp_820.vcf.recode.vcf", "r")
+  headcol <- readLines(con,n= 910)
+  headcol <- unlist(str_split(headcol[910], pattern = "\t"))
+  headcol[1] <- "CHROM"
+  #check overlap with SV individual
+  svindi <- read.csv("/scratch/ksongsom/terra_snp20/individual_list.csv")
+  headcol[which(!(headcol %in% svindi$indi))][-(1:9)]
+  svindi$indi[which(!(svindi$indi %in% headcol))]
+  headcol <- gsub("620157","534157",headcol)
+  headcol <- gsub("655996","655999",headcol)
+  headcol <- gsub("656020","656021",headcol)
+  headcol <- gsub("656026","656025",headcol)
+  headcol <- gsub("656051","656050",headcol)
+  excludeindi <- headcol[which(!(headcol %in% svindi$indi))][-(1:9)]
+close(con)
+
+
+con = file("/scratch/ksongsom/terra_snp20/AllChr_snp_820.vcf.recode.vcf", "r")
+sumpi <- 0
+updatelength <- 0
+pi_dat <- c()
+datalist = list()
+
+while ( TRUE ) {
+  line = readLines(con, n = 1)
+  if(!grepl("#", line)){
+    line <- as.data.frame(line)
+  
+    eachline <- line %>% tidyr::separate(line, sep = "\t", into = headcol)
+    eachline$POS <- as.numeric(eachline$POS)
+    eachid <- paste(eachline[1], eachline$POS, sep = "_")
+    eachgeno <- eachline[,-(1:9)]
+    eachgeno <- eachgeno[,!(colnames(eachgeno) %in% excludeindi)] #filter individual out
+    
+    g1 <- eachgeno
+    if (length(grep("\\.\\/\\.", g1)) > 0) {
+      g1=g1[-(grep("\\.\\/\\.", g1))] # Get rid of missing genotypes if there are any
+    }
+    n=ncol(g1) # Get the total number of alleles 
+    
+    #determine which is minor
+    each01 <- (unlist(lapply(str_split(t(g1), ":"), `[[`, 1)))
+    ref <- length(grep("0/0", each01))
+    alt <- n-ref
+    
+    j = min(alt, ref, na.rm = T)  # Get the minor allele count
+    x=((2*j)*(n-j))/(n*(n-1)) # Get the calculation of 2j(n-j)/n(n-1) for this one site
+    sumpi=sumpi+x # Add the count to the sum outside of the loop
+  
+    #keep within window  
+    eachpi <- cbind.data.frame(eachline[1], eachline[2], x)
+    whichwindow <- which(windowdat$windowchr == eachpi$CHROM & windowdat$upper >= eachpi$POS & windowdat$lower <= eachpi$POS)
+    
+    if(is.integer(whichwindow)){
+    windowdat$sum_pi[whichwindow] <- sum(windowdat$mean_pi[whichwindow], x, na.rm = T)
+    windowdat$size[whichwindow] <- sum(windowdat$size[whichwindow], length(whichwindow))
+    
+    saveRDS(windowdat, "/scratch/ksongsom/terra_snp20/pi_window_snp_820.rds")
+    
+    }
+    updatelength <- updatelength + length(line)
+    
+    
+    #make master table
+    #pi_dat <- rbind.data.frame(pi_dat, eachpi) too slow
+    eachpi$updatelength <- updatelength  # keep track of which iteration produced it?
+    datalist[[updatelength]] <- eachpi
+    
+    print(paste("snp", updatelength, sep = "_"))
+  }
+}
+close(con)
+
+saveRDS(datalist, "/scratch/ksongsom/terra_snp20/pi_list_snp_820.rds")
+
+pi_dat = do.call(rbind.data.frame, datalist)
+
+
+
+#calculate whole genome
+alt.pi.bp=sumpi/updatelength # Divide the total count for all sites by the number of base pairs in the sequence
+print(alt.pi.bp)
+
+#windowdat$pi_per_window <- round(windowdat$sum_pi/windowdat$size, digits = 3)
+
+saveRDS(windowdat, "/scratch/ksongsom/terra_snp20/pi_window_snp_820.rds")
+write.csv(windowdat, "/scratch/ksongsom/terra_snp20/pi_window_snp_820.csv", row.names = F, quote = F)
+
+saveRDS(pi_dat, "/scratch/ksongsom/terra_snp20/pi_eachsnp_820.rds")
+write.csv(pi_dat, "/scratch/ksongsom/terra_snp20/pi_eachsnp_820.csv", row.names = F, quote = F)
+
+
+######SV diversity
+#load geno
+#sorghum chromosome
+sorghumgenome <- as.data.frame(cbind(c(paste("Chr0", 1:9, sep = ""), "Chr10"), rep(1, 10),c(80884392, 77742459, 74386277, 68658214, 71854669, 61277060, 65505356,62686529,59416394,61233695)))
+colnames(sorghumgenome) <- c("Chromosome", "start", "end")
+sorghumgenome$Chromosome <- as.character(sorghumgenome$Chromosome)
+sorghumgenome$start <- as.numeric(as.character(sorghumgenome$start))
+sorghumgenome$end <- as.numeric(as.character(sorghumgenome$end))
+
+windowsize <- 500000
+windowdat_sv <- c()
+for(i in 1:nrow(sorghumgenome)){
+  cutoff <- seq(sorghumgenome$start[i], sorghumgenome$end[i], by = windowsize)  
+  for(j in 1:(length(cutoff)-1)){
+    lower <- cutoff[j]
+    upper <- cutoff[j+1]-1
+    windowchr <- sorghumgenome$Chromosome[i]
+    windowname <- paste(sorghumgenome$Chromosome[i], j, sep = "_")
+    windowdat_sv <- rbind.data.frame(windowdat_sv, cbind.data.frame(windowname, windowchr, lower, upper))
+  }
+}
+
+#lumpyf4 from site frequency spectrum
+head(lumpy_f4)
+tab <- lumpy_f4
+#tab <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/code/files/347_go.rds")
+tab <- tab[tab$svlen >= 50,]
+dim(tab)
+head(tab)
+updatelength <- 0
+sumpi <- 0
+datalist_sv = list()
+for(l in 1:nrow(tab)){
+    line <- tab[l,] 
+    eachline <- line
+    eachline$pos <- as.numeric(eachline$pos)
+    eachid <- paste(eachline[1], eachline$pos, eachline$svtype, sep = "_")
+    eachgeno <- eachline[,which(colnames(eachline) == "144134"):which(colnames(eachline) == "rio")]
+    
+    g1 <- eachgeno
+    g1=g1[!is.na(g1)] # Get rid of missing genotypes if there are any
+    
+    n=length(g1) # Get the total number of alleles 
+    
+    #determine which is minor
+    alt <- length(grep("1", g1))
+    ref <- n-alt
+    j = min(alt, ref, na.rm = T)  # Get the minor allele count
+    x=((2*j)*(n-j))/(n*(n-1)) # Get the calculation of 2j(n-j)/n(n-1) for this one site
+    sumpi=sumpi+x # Add the count to the sum outside of the loop
+    
+    #keep within window  
+    eachpi <- cbind.data.frame(eachline[1], eachline[2], eachline[10], x)
+    whichwindow <- which(windowdat_sv$windowchr == eachpi$chr & windowdat_sv$upper >= eachpi$pos & windowdat_sv$lower <= eachpi$end)
+    
+    #if(is.logical(whichwindow)){
+      windowdat_sv$sum_pi[whichwindow] <- sum(windowdat_sv$mean_pi[whichwindow], x, na.rm = T)
+      windowdat_sv$size[whichwindow] <- sum(windowdat_sv$size[whichwindow], length(whichwindow))
+      
+      saveRDS(windowdat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pi_window_sv.rds")
+    #}
+    updatelength <- updatelength + nrow(line)
+    
+    
+    #make master table
+    #pi_dat <- rbind.data.frame(pi_dat, eachpi) too slow
+    eachpi$updatelength <- updatelength  # keep track of which iteration produced it?
+    datalist_sv[[updatelength]] <- eachpi
+    
+    print(paste("SV", updatelength, sep = "_"))
+
+}
+
+windowdat_sv
+pi_dat_sv = do.call(rbind.data.frame, datalist_sv)
+
+saveRDS(datalist_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_list_sv.rds")
+
+#calculate whole genome
+alt.pi.bp_sv=sumpi/updatelength # Divide the total count for all sites by the number of base pairs in the sequence
+print(alt.pi.bp_sv)
+
+saveRDS(windowdat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv.rds")
+write.csv(windowdat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv.csv", row.names = F, quote = F)
+
+saveRDS(pi_dat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_each_sv.rds")
+write.csv(pi_dat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_each_sv.csv", row.names = F, quote = F)
+
+
+#pi/bp and correlation between snp and sv
+#windowdat_sv$pi_per_window <- round(windowdat_sv$sum_pi/windowdat_sv$size, digits = 3)
+windowdat <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pi_window_snp_820.rds")
+windowdat_sv <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv.rds")
+#remove row with now snp
+windowdat[windowdat$size == 1,]$sum_pi <- NA
+windowdat[windowdat$size == 1,]$size <- NA
+
+windowdat_sv[windowdat_sv$size == 1,]$sum_pi <- NA
+windowdat_sv[windowdat_sv$size == 1,]$size <- NA
+
+windowsize = 500000
+windowdat_sv$pi_per_window <- (windowdat_sv$sum_pi/windowsize)
+windowdat$pi_per_window <- (windowdat$sum_pi/windowsize)
+
+mean(windowdat_sv$pi_per_window, na.rm = T)
+mean(windowdat$pi_per_window, na.rm = T)
+
+mean(windowdat_sv$sum_pi*windowdat_sv$size/windowsize, na.rm = T)
+mean(windowdat$sum_pi*windowdat$size/windowsize, na.rm = T)
+
+cor(windowdat$pi_per_window, windowdat_sv$pi_per_window, method = "pearson")
+cor.test(windowdat$pi_per_window, windowdat_sv$pi_per_window, method = "pearson")
+
+#write.xlsx(cbind.data.frame(windowdat, windowdat_sv[,c("sum_pi",  "size", "pi_per_window")]), "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pi_snp_sv_dat.xlsx")
+
+#calculate overall pi of snp
+sum(windowdat$sum_pi*windowdat$size, na.rm = T)/sum(windowdat$size, na.rm = T)
+sum(windowdat_sv$sum_pi*windowdat_sv$size, na.rm = T)/sum(windowdat_sv$size, na.rm = T)
