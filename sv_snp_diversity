@@ -1,7 +1,77 @@
 ### An alternate calculation for Pi,
 ### Using the Begun (2007) formula
 options(stringsAsFactors = F)
-vcf_snp <- read.table("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/out.012", sep = "\t", header = F, row.names = F)
+vcf_snp <- read.table("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/AllChr_snp012_2.vcf.012", sep = "\t", header = F, row.names = NULL)
+poscol <- read.table("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/AllChr_snp012_2.vcf.012.pos", sep = "\t")
+indicol <- read.table("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/AllChr_snp012_2.vcf.012.indv", sep = "\t")
+
+vcf_snp <- read.table("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/AllChr_snp012_3.vcf.012", sep = "\t", header = F, row.names = NULL)
+poscol <- read.table("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/AllChr_snp012_3.vcf.012.pos", sep = "\t")
+indicol <- read.table("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/AllChr_snp012_3.vcf.012.indv", sep = "\t")
+
+indicol$V1 <- gsub("620157","534157",indicol$V1)
+indicol$V1 <- gsub("655996","655999",indicol$V1)
+indicol$V1 <- gsub("656020","656021",indicol$V1)
+indicol$V1 <- gsub("656026","656025",indicol$V1)
+indicol$V1 <- gsub("656051","656050",indicol$V1)
+
+indicol$V1 <- gsub("562985","BTx623",indicol$V1)
+indicol$V1 <- gsub("329518","330122",indicol$V1)
+indicol$V1 <- gsub("455307","474825",indicol$V1)
+indicol$V1 <- gsub("570038","533964",indicol$V1)
+
+svindi <- read.csv("/Users/ksongsom/OneDrive/postdoc/publication/terra/individual_list.csv")
+indicol[(!(indicol$V1 %in% svindi$indi)),]
+svindi$indi[(!(svindi$indi %in% indicol$V1))]
+indicol$V1[(!(indicol$V1 %in% svindi$indi))]
+excludeindi <- indicol[(!(indicol$V1 %in% svindi$indi)),]
+indicol[!(indicol$V1 %in% excludeindi),]
+length(indicol[!(indicol$V1 %in% excludeindi),])
+
+#name from combine
+vcf_snp$V1 <- indicol$V1
+colnames(vcf_snp) <- c("genotypes", paste(poscol$V1, poscol$V2, sep = "_"))
+vcf_snp[1:10,1:10]
+#tvcf_snp <- t(vcf_snp[,-1])
+#colnames(tvcf_snp) <- indicol$V1
+#tvcf_snp[1:10,1:10]
+
+
+#impute missing data from https://github.com/Mesfingo/R-code-for-missing-genotype-imputation/blob/master/p_impute%20function.R
+
+  
+  #read genotype file and remove the first 6 columns
+  #data_full <- read.table(geno_file, header = T)
+  vcf_snp[vcf_snp == -1] <- NA
+  data <- vcf_snp
+  row.names(data) <- data$genotypes
+  data <- data[,-1]
+  #calculate probabilities of the three genotypes for each column (SNP)
+  n <- nrow(data)
+  p_0 <- apply(data, 2, function(x){sum(x == 0, na.rm = T)/(n - sum(is.na(x)))})
+  p_1 <- apply(data, 2, function(x){sum(x == 1, na.rm = T)/(n - sum(is.na(x)))})
+  p_2 <- apply(data, 2, function(x){sum(x == 2, na.rm = T)/(n - sum(is.na(x)))})
+  p <- data.frame(p_0, p_1, p_2)
+  
+  #make sure the probalilities add up to one so that it won't be a problem for the sampling function
+  p <- t(apply(p, 1, function(x){x/sum(x)}))
+  
+  #make a table for indices of missing genotypes
+  NA_indices <- which(is.na(data), arr.ind = T)
+  
+  #replace missing genotypes by sampling from (0,1,2) based on probabilities given in table p
+  for (i in 1:nrow(NA_indices)) {
+    x <- NA_indices[i, ]
+    data[x[1], x[2]] <- sample(c(0:2), 1, replace = T, prob = p[x[2], ])
+  }
+  
+vcf_snp[1:10,1:10]  
+vcf_snp <- vcf_snp[!(vcf_snp$genotypes %in% excludeindi),]
+data[1:10,1:10]
+data <- (data[!(row.names(data)%in% excludeindi),])
+saveRDS(vcf_snp, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/AllChr_snp012_3.vcf.012.rds")
+saveRDS(data, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/AllChr_snp012_3.vcf.012_imputed.rds")
+
 pi=0 
 for (i in 1:nrow(sampleVCF)) { # Now I will use a for loop to go through each site, like we usually do
     g1=get.genotypes(as.vector(sampleVCF[i,], mode="character"), start=g.start, end=g.end, format=sampleVCF[i,f.column]) # Get the genotypes (typical usage)
@@ -50,8 +120,8 @@ con = file("/scratch/ksongsom/terra_snp20/AllChr_snp_820.vcf.recode.vcf", "r")
   headcol[1] <- "CHROM"
   #check overlap with SV individual
   svindi <- read.csv("/scratch/ksongsom/terra_snp20/individual_list.csv")
-  headcol[which(!(headcol %in% svindi$indi))][-(1:9)]
-  svindi$indi[which(!(svindi$indi %in% headcol))]
+  #headcol[which(!(headcol %in% svindi$indi))][-(1:9)]
+  #svindi$indi[which(!(svindi$indi %in% headcol))]
   headcol <- gsub("620157","534157",headcol)
   headcol <- gsub("655996","655999",headcol)
   headcol <- gsub("656020","656021",headcol)
@@ -101,7 +171,7 @@ while ( TRUE ) {
     windowdat$sum_pi[whichwindow] <- sum(windowdat$mean_pi[whichwindow], x, na.rm = T)
     windowdat$size[whichwindow] <- sum(windowdat$size[whichwindow], length(whichwindow))
     
-    saveRDS(windowdat, "/scratch/ksongsom/terra_snp20/pi_window_snp_820.rds")
+    #saveRDS(windowdat, "/scratch/ksongsom/terra_snp20/pi_window_snp_820.rds")
     
     }
     updatelength <- updatelength + length(line)
@@ -160,13 +230,16 @@ for(i in 1:nrow(sorghumgenome)){
 
 #lumpyf4 from site frequency spectrum
 head(lumpy_f4)
-tab <- lumpy_f4
+tab <- lumpy_f4[lumpy_f4$svtype == "DEL",]
+#tab <- lumpy_f2
+
 #tab <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/code/files/347_go.rds")
 tab <- tab[tab$svlen >= 50,]
 dim(tab)
 head(tab)
 updatelength <- 0
 sumpi <- 0
+allrow <- c()
 datalist_sv = list()
 for(l in 1:nrow(tab)){
     line <- tab[l,] 
@@ -193,9 +266,9 @@ for(l in 1:nrow(tab)){
     
     #if(is.logical(whichwindow)){
       windowdat_sv$sum_pi[whichwindow] <- sum(windowdat_sv$mean_pi[whichwindow], x, na.rm = T)
-      windowdat_sv$size[whichwindow] <- sum(windowdat_sv$size[whichwindow], length(whichwindow))
+      windowdat_sv$size[whichwindow] <- sum(windowdat_sv$size[whichwindow], length(whichwindow), na.rm = T)
       
-      saveRDS(windowdat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pi_window_sv.rds")
+      saveRDS(windowdat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pi_window_sv_deletions.rds")
     #}
     updatelength <- updatelength + nrow(line)
     
@@ -206,8 +279,14 @@ for(l in 1:nrow(tab)){
     datalist_sv[[updatelength]] <- eachpi
     
     print(paste("SV", updatelength, sep = "_"))
+    
+    #additional info
+    eachrow <- cbind.data.frame(eachline[1], eachline[2], eachline[10], eachline[8], x, alt, ref)
+    allrow <- rbind.data.frame(allrow, eachrow)
 
 }
+#write.csv(allrow, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pi_allrow.csv")
+allrow %>% group_by(svtype) %>% summarise(pi_x = mean(x, na.rm = T), sum_pi = sum(x, na.rm = T), pi_per = sum_pi/sum(sorghumgenome$end))
 
 windowdat_sv
 pi_dat_sv = do.call(rbind.data.frame, datalist_sv)
@@ -218,17 +297,29 @@ saveRDS(datalist_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/
 alt.pi.bp_sv=sumpi/updatelength # Divide the total count for all sites by the number of base pairs in the sequence
 print(alt.pi.bp_sv)
 
-saveRDS(windowdat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv.rds")
-write.csv(windowdat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv.csv", row.names = F, quote = F)
+saveRDS(windowdat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv_del.rds")
+write.csv(windowdat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv_del.csv", row.names = F, quote = F)
 
-saveRDS(pi_dat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_each_sv.rds")
-write.csv(pi_dat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_each_sv.csv", row.names = F, quote = F)
+saveRDS(pi_dat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_each_sv_del.rds")
+write.csv(pi_dat_sv, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_each_sv_del.csv", row.names = F, quote = F)
 
 
 #pi/bp and correlation between snp and sv
 #windowdat_sv$pi_per_window <- round(windowdat_sv$sum_pi/windowdat_sv$size, digits = 3)
 windowdat <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/pi_window_snp_820.rds")
-windowdat_sv <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv.rds")
+windowdat_sv <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv_deletions.rds")
+#windowdat_sv_original <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv.rds")
+#windowdat_sv_original2 <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv_2.rds") #deletions 22k
+#windowdat_sv_original3 <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result//pi_window_sv_3.rds") #all 22k
+
+#check
+#head(windowdat_sv_original)
+#head(windowdat_sv_original2)
+#sum(windowdat$size, na.rm = T)
+#sum(windowdat_sv_original$size, na.rm = T)
+#sum(windowdat_sv_original2$size, na.rm = T)
+
+
 #remove row with now snp
 windowdat[windowdat$size == 1,]$sum_pi <- NA
 windowdat[windowdat$size == 1,]$size <- NA
@@ -240,8 +331,11 @@ windowsize = 500000
 windowdat_sv$pi_per_window <- (windowdat_sv$sum_pi/windowsize)
 windowdat$pi_per_window <- (windowdat$sum_pi/windowsize)
 
-mean(windowdat_sv$pi_per_window, na.rm = T)
 mean(windowdat$pi_per_window, na.rm = T)
+mean(windowdat_sv$pi_per_window, na.rm = T)
+
+mean(windowdat$pi_per_window, na.rm = T)/mean(windowdat_sv$pi_per_window, na.rm = T)
+mean(windowdat_sv$pi_per_window, na.rm = T)/mean(windowdat$pi_per_window, na.rm = T)
 
 mean(windowdat_sv$sum_pi*windowdat_sv$size/windowsize, na.rm = T)
 mean(windowdat$sum_pi*windowdat$size/windowsize, na.rm = T)
