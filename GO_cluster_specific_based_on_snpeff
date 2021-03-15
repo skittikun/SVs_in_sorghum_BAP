@@ -1,0 +1,403 @@
+library(openxlsx)
+library(diveRsity)
+library("viridis")
+library(stringi)
+library(stringr)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(lme4)
+library(lmerTest)
+library(betareg)
+library(seqinr)
+library(vcfR)
+library(seqinr)
+library(devtools)
+library(parallel)
+library(iterators)
+library(foreach)
+library(doParallel)
+library(IRanges)
+library(GenomicRanges)
+library(plyr)
+library(stringi)
+library(stringr)
+library(lme4)
+library(lmerTest)
+library(betareg)
+library(seqinr)
+library(vcfR)
+library(seqinr)
+library(devtools)
+library(pROC)
+library(Epi)
+library(VennDiagram)
+library(gridExtra)
+library(eulerr)
+library(stringdist)
+library(reshape2)
+library(gtools)
+library(stringdist)
+library(RecordLinkage)
+library(radmixture)
+library(FactoMineR)
+library(scatterplot3d)
+library(RColorBrewer)
+library(scales)
+library(Rgraphviz)
+
+
+
+right = function (string, char){
+  substr(string,nchar(string)-(char-1),nchar(string))
+}
+
+
+left = function (string,char){
+  substr(string,1,char)
+}
+
+#load sup table 2
+suptab <- read.xlsx("/Users/ksongsom/OneDrive/postdoc/publication/terra/to_submit_revised/Songsomboon_table_revised1.xlsx", sheet = "Supplement table 3", startRow = 2)
+
+#only moderate - high impact
+suptab <- (suptab[suptab$Impact.levels %in% c("HIGH", "MODERATE"),])
+head(suptab)
+table(suptab$Unique.to.cluster)
+
+
+#load gene
+tab19 <- readRDS("/Users/ksongsom/OneDrive/postdoc/SV/illumina/TERRA/fil_del_eff_readvcf_01_fill_split_sveff_all.vcf.rds")
+dim(tab19)
+tab19 <- (tab19[tab19$mod1 %in% c("HIGH", "MODERATE"),])
+
+#load gff
+gff <- readRDS("/Users/ksongsom/OneDrive/postdoc/SV/illumina/gene_anno.rds")
+head(gff)
+mrna <- gff[gff$feature == "mRNA",]
+
+#1 obtain genes from subtable
+#cluster specific
+gene_function_all <- c()
+allaffected_genes <- c()
+for(m in 1:nrow(suptab)){
+  #m = 55
+  affected <- suptab[m,]$Affected.genes
+  if(!grepl(paste(c("-", "&"), collapse = "|"), affected)){
+    affected_genes <- gff[grepl(affected, gff$Name) & gff$feature == "gene",]$Name 
+    gene_function <- mrna[grepl(affected, mrna$Name),]$rice.defline
+    gene_function <- gsub(", putative", "", gsub(", expressed", "", gene_function))
+    #gene_function_all <- c(gene_function_all, gene_function)
+  }else{
+    if(grepl(paste(c("-"), collapse = "|"), affected)){
+      
+      aff1 <- strsplit(affected, "-")[[1]][1]
+      aff2 <- strsplit(affected, "-")[[1]][2]
+      
+      startrow <- which(grepl(aff1, gff$Name))
+      endrow <- which(grepl(aff2, gff$Name))
+      
+      affected_genes <- gff[startrow:endrow,][gff[startrow:endrow,]$feature %in% "gene",]$Name
+      
+      gene_function <- paste(na.omit(mrna[startrow:endrow,]$rice.defline), collapse = "& ")
+      gene_function <- gsub(", putative", "", gsub(", expressed", "", gene_function))
+      #gene_function_all <- c(gene_function_all, gene_function)
+    }else{
+      if(grepl(paste(c("&"), collapse = "|"), affected)){
+        affected
+        allaffected <- unlist(strsplit(affected, "&"))
+        affected_genes <- allaffected
+        gene_function <- paste(na.omit(mrna[grepl(paste(allaffected, collapse = "|"), mrna$Name),]$rice.defline), collapse = "& ")
+        gene_function <- gsub(", putative", "", gsub(", expressed", "", gene_function))
+        #gene_function_all <- c(gene_function_all, gene_function)
+      }
+    }
+  }
+  gene_function_all[m] <- gene_function
+  allaffected_genes <- c(allaffected_genes, affected_genes)
+  print(paste(m, m/nrow(suptab), sep = "_"))
+}
+allaffected_genes <- allaffected_genes[!is.na(allaffected_genes)]
+head(gene_function_all)
+length(allaffected_genes)
+
+#include non-cluster specific
+gene_function_all_all <- c()
+allaffected_genes_all <- c()
+for(m in 1:nrow(tab19)){
+  #m = 55
+  affected <- tab19[m,]$gene1
+  if(!grepl(paste(c("-", "&"), collapse = "|"), affected)){
+    affected_genes <- gff[grepl(affected, gff$Name) & gff$feature == "gene",]$Name 
+    gene_function <- mrna[grepl(affected, mrna$Name),]$rice.defline
+    gene_function <- gsub(", putative", "", gsub(", expressed", "", gene_function))
+    #gene_function_all <- c(gene_function_all, gene_function)
+  }else{
+    if(grepl(paste(c("-"), collapse = "|"), affected)){
+      
+      aff1 <- strsplit(affected, "-")[[1]][1]
+      aff2 <- strsplit(affected, "-")[[1]][2]
+      
+      startrow <- which(grepl(aff1, gff$Name))
+      endrow <- which(grepl(aff2, gff$Name))
+      
+      affected_genes <- gff[startrow:endrow,][gff[startrow:endrow,]$feature %in% "gene",]$Name
+      
+      gene_function <- paste(na.omit(mrna[startrow:endrow,]$rice.defline), collapse = "& ")
+      gene_function <- gsub(", putative", "", gsub(", expressed", "", gene_function))
+      #gene_function_all <- c(gene_function_all, gene_function)
+    }else{
+      if(grepl(paste(c("&"), collapse = "|"), affected)){
+        affected
+        allaffected <- unlist(strsplit(affected, "&"))
+        affected_genes <- allaffected
+        gene_function <- paste(na.omit(mrna[grepl(paste(allaffected, collapse = "|"), mrna$Name),]$rice.defline), collapse = "& ")
+        gene_function <- gsub(", putative", "", gsub(", expressed", "", gene_function))
+        #gene_function_all <- c(gene_function_all, gene_function)
+      }
+    }
+  }
+  gene_function_all_all[m] <- gene_function
+  allaffected_genes_all <- c(allaffected_genes_all, affected_genes)
+  print(paste(m, m/nrow(tab19), sep = "_"))
+}
+allaffected_genes_all <- allaffected_genes_all[!is.na(allaffected_genes_all)]
+head(allaffected_genes_all)
+length(allaffected_genes_all)
+
+#
+clusterspecific_gene <- allaffected_genes 
+nonclusterspecific_gene <- allaffected_genes_all#setdiff(allaffected_genes_all, 
+                            #       allaffected_genes) 
+
+
+#1 filter only in genes
+effgene <- tab19[!is.na(tab19$genes),]
+head(effgene)
+dim(effgene)
+
+effgene_sv <- effgene$svid
+effgene_go <- effgene$go
+
+
+#2 filter only protein coding
+#2.1 filter tab to only cluster-specific SVs
+
+effgene_clu_interest <- clusterspecific_gene
+
+#3 GO enrichmen analysis
+#https://bioconductor.org/packages/release/bioc/html/topGO.html
+#https://bioconductor.org/packages/release/bioc/vignettes/topGO/inst/doc/topGO.pdf
+
+library(topGO)
+library(ALL)
+library(genefilter)
+library(ViSEAGO)
+
+#my case
+gogff <- gff[!is.na(gff$GO),c("Name", "GO")]
+head(gogff)
+mygeneID2GO <- strsplit(gogff$GO, ",")
+
+names(mygeneID2GO) <- gsub("Sobic_", "Sobic.", gsub("\\..*", "", gsub("Sobic.", "Sobic_", gogff$Name)))
+mygeneID2GO <- mygeneID2GO[unique(names(mygeneID2GO))]
+myGO2geneID <- inverseList(mygeneID2GO)
+
+effgene_non_interest <- nonclusterspecific_gene
+effgene_clu_interest <- clusterspecific_gene#unique(gsub("Sobic_", "Sobic.", gsub("\\..*", "", gsub("Sobic.", "Sobic_", effgene_clu_interest))))
+length(effgene_clu_interest)
+
+#gene names
+mygeneList_effgene_non <- factor(as.integer(names(mygeneID2GO) %in% effgene_non_interest))
+names(mygeneList_effgene_non) <- names(mygeneID2GO)
+
+mygeneList_effgene_clu <- factor(as.integer(names(mygeneID2GO) %in% effgene_clu_interest))
+names(mygeneList_effgene_clu) <- names(mygeneID2GO)
+
+
+myGOdata_non <- new("topGOdata", ontology = "MF", allGenes = mygeneList_effgene_non,
+                     annot = annFUN.gene2GO, gene2GO = mygeneID2GO)
+
+myGOdata_clu <- new("topGOdata", ontology = "MF", allGenes = mygeneList_effgene_clu,
+                     annot = annFUN.gene2GO, gene2GO = mygeneID2GO)
+
+topDiffGenes <- function(allScore){
+  return(allScore < 0.01)
+}
+
+#stat summary
+#cluster specific
+numGenes(myGOdata_clu)
+gs_clu <- geneScore(myGOdata_clu, whichGenes = effgene_clu_interest)
+
+sg_clu <- sigGenes(myGOdata_clu)
+
+length(effgene_clu_interest)
+length(sg_clu)
+numSigGenes(myGOdata_clu)
+
+usedGO(myGOdata_clu)
+termStat(myGOdata_clu, usedGO(myGOdata_clu))
+
+#non cluster specific
+numGenes(myGOdata_non)
+gs_non <- geneScore(myGOdata_non, whichGenes = effgene_non_interest)
+
+sg_clu <- sigGenes(myGOdata_non)
+
+length(effgene_non_interest)
+length(sg_clu)
+numSigGenes(myGOdata_non)
+
+usedGO(myGOdata_non)
+termStat(myGOdata_non, usedGO(myGOdata_non))
+
+
+#classic count test cluster specific
+gene.universe_clu <- genes(myGOdata_clu)
+go.genes_clu <- genesInTerm(myGOdata_clu, usedGO(myGOdata_clu))[[1]]
+sig.genes_clu <- sigGenes(myGOdata_clu)
+
+my.group_clu <- new("classicCount", testStatistic = GOFisherTest, 
+                     name = "fisher", allMembers = gene.universe_clu, 
+                     groupMembers = go.genes_clu,
+                     sigMembers = sig.genes_clu)
+contTable(my.group_clu)
+runTest(my.group_clu)
+
+test.stat <- new("classicCount", testStatistic = GOFisherTest, name = "Fisher test")
+resultFisher_clu <- getSigGroups(myGOdata_clu, test.stat)
+
+test.stat <- new("classicScore", testStatistic = GOKSTest, name = "KS tests")
+resultKS_clu <- getSigGroups(myGOdata_clu, test.stat)
+
+test.stat <- new("weightCount", testStatistic = GOFisherTest, name = "Fisher test", sigRatio = "ratio")
+resultWeight_clu <- getSigGroups(myGOdata_clu, test.stat)
+
+resultFisher_clu
+resultKS_clu
+resultWeight_clu
+score(resultWeight_clu)
+hist(score(resultWeight_clu), 50, xlab = "p-values")
+geneData(resultWeight_clu)
+
+top10_clu <- as.integer(geneData(resultWeight_clu)[2]*1)
+allRes_clu <- GenTable(myGOdata_clu, classic = resultFisher_clu, 
+                        KS = resultKS_clu, weight = resultWeight_clu,
+                        orderBy = "weight", ranksOf = "classic", topNodes = top10_clu)
+goID_clu <- allRes_clu[2, "GO.ID"]
+
+
+
+setwd("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go/snpeff/cluster_specific/")
+showSigOfNodes(myGOdata_clu, score(resultWeight_clu), firstSigNodes = 5, useInfo = 'all')
+printGraph(myGOdata_clu, resultFisher_clu, firstSigNodes = 5, fn.prefix = "tGO", useInfo = "all", pdfSW = F)
+printGraph(myGOdata_clu, resultFisher_clu, firstSigNodes = 1, fn.prefix = "tGO", useInfo = "all", pdfSW = F)
+printGraph(myGOdata_clu, resultWeight_clu, firstSigNodes = 10, resultFisher_clu, fn.prefix = "tGO", useInfo = "def")
+printGraph(myGOdata_clu, resultWeight_clu, firstSigNodes = 20, resultFisher_clu, fn.prefix = "tGO", useInfo = "def")
+
+printGraph(myGOdata_clu, resultWeight_clu, firstSigNodes = 5, resultFisher_clu, fn.prefix = "tGO", useInfo = "def")
+write.csv(allRes_clu, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_snpeff_cluster.csv")
+
+
+
+
+
+
+
+#non cluster specific
+gene.universe_non <- genes(myGOdata_non)
+go.genes_non <- genesInTerm(myGOdata_non, usedGO(myGOdata_non))[[1]]
+sig.genes_non <- sigGenes(myGOdata_non)
+
+my.group_non <- new("classicCount", testStatistic = GOFisherTest, 
+                     name = "fisher", allMembers = gene.universe_non, 
+                     groupMembers = go.genes_non,
+                     sigMembers = sig.genes_non)
+contTable(my.group_non)
+runTest(my.group_non)
+
+test.stat <- new("classicCount", testStatistic = GOFisherTest, name = "Fisher test")
+resultFisher_non <- getSigGroups(myGOdata_non, test.stat)
+
+test.stat <- new("classicScore", testStatistic = GOKSTest, name = "KS tests")
+resultKS_non <- getSigGroups(myGOdata_non, test.stat)
+
+resultFisher_non
+resultKS_non
+
+test.stat <- new("weightCount", testStatistic = GOFisherTest, name = "Fisher test", sigRatio = "ratio")
+resultWeight_non <- getSigGroups(myGOdata_non, test.stat)
+
+resultWeight_non
+score(resultWeight_non)
+hist(score(resultWeight_non), 50, xlab = "p-values")
+geneData(resultWeight_non)
+
+top10_non <- as.integer(geneData(resultWeight_non)[2]*1)
+allRes_non <- GenTable(myGOdata_non, classic = resultFisher_non, 
+                        KS = resultKS_non, weight = resultWeight_non,
+                        orderBy = "weight", ranksOf = "classic", topNodes = top10_non)
+goID_non <- allRes_non[2, "GO.ID"]
+
+print(showGroupDensity(myGOdata_non, goID_non, ranks = TRUE))
+
+setwd("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go/snpeff/noncluster_specific/")
+showSigOfNodes(myGOdata_non, score(resultWeight_non), firstSigNodes = 5, useInfo = 'all')
+printGraph(myGOdata_non, resultFisher_non, firstSigNodes = 5, fn.prefix = "tGO", useInfo = "all", pdfSW = TRUE)
+printGraph(myGOdata_non, resultWeight_non, firstSigNodes = 5, resultFisher_non, fn.prefix = "tGO", useInfo = "def")
+printGraph(myGOdata_non, resultWeight_non, firstSigNodes = 10, resultFisher_non, fn.prefix = "tGO", useInfo = "def")
+
+
+write.csv(allRes_non, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_non_cluster.csv")
+
+
+#test fisher between stress related gene vs 
+#extract cds stress related go
+myGOdata_clu
+gene.universe_clu <- genes(myGOdata_clu)
+go.genes_clu <- genesInTerm(myGOdata_clu, usedGO(myGOdata_clu))[[1]]
+test <- GenTable(myGOdata_clu, usedGO(myGOdata_clu))
+test
+all_count_clu <- as.integer(geneData(resultWeight_clu)[2])
+allRes_count_clu <- GenTable(myGOdata_clu, classic = resultFisher_clu, 
+                              KS = resultKS_clu, weight = resultWeight_clu,
+                              orderBy = "weight", ranksOf = "classic", topNodes = all_count_clu)
+
+saveRDS(allRes_count_clu, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_216_snpeff_cluster.rds")
+
+saveRDS(allRes_clu, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_snpeff_clu.rds")
+saveRDS(allRes_non, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_snpeff_non.rds")
+
+
+#compare between all and cluster specific
+allRes_count_clu_all <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_snpeff_non.rds")
+allRes_count_clu_cluster <- readRDS("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_snpeff_clu.rds")
+
+write.xlsx(allRes_count_clu_all, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_all_snpeff.xlsx")
+write.xlsx(allRes_count_clu_cluster, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_cluster_snpeff.xlsx")
+
+
+mprot <- merge(x = allRes_count_clu_all, y = allRes_count_clu_cluster[,!(colnames(allRes_count_clu_cluster) %in% c("Term", "Annotated"))], 
+               by = "GO.ID", all.x = T, all.y = T, suffixes = c(" all", " cluster specific"))
+head(mprot)
+mprot$`weight all` <- as.numeric(mprot$`weight all`)
+mprot$`weight cluster specific` <- as.numeric(mprot$`weight cluster specific`)
+mprot <- mprot[order(mprot$`weight all`, decreasing = F),]
+
+write.xlsx(mprot, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_216_cluster_snpeff.xlsx")
+
+
+mprot2 <- merge(x = allRes_count_clu_cluster, y = allRes_count_clu_all[,!(colnames(allRes_count_clu_all) %in% c("Term", "Annotated"))], 
+               by = "GO.ID", all.x = T, all.y = T, suffixes = c(" cluster specific", " all"))
+head(mprot2)
+mprot2$`weight all` <- as.numeric(mprot2$`weight all`)
+mprot2$`weight cluster specific` <- as.numeric(mprot2$`weight cluster specific`)
+mprot2 <- mprot2[order(mprot2$`weight cluster`, decreasing = F),]
+
+
+write.xlsx(mprot2, "/Users/ksongsom/OneDrive/postdoc/publication/terra/result/go_216_cluster_sv_snpeff.xlsx")
+
+
+#check
+gff[grepl("GO:0046983", gff$GO),]
