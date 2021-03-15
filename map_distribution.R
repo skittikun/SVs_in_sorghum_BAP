@@ -179,7 +179,7 @@ newmap2 <- merge(newmap2, mapdata, by.x = "coordinate", by.y = "coordinate", all
 
 #API from google
 
-register_google(key = "AIzaSyDVIwuIHmOBGFHH2zGQYrkUXMI--EzZdo0")
+register_google(key = "XXX")
 
 mapaf <- ggmap::get_map(location = c(lon = mean(africamap$CapitalLongitude, na.rm = T), 
                               lat = mean(africamap$CapitalLatitude, na.rm = T)), zoom = 3,
