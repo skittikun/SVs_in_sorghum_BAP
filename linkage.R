@@ -78,6 +78,8 @@ for(i in 1:length(LDcase)){
       LDcase[i]
       ld <- read.table(LDfile[i],header=T)
       lld <- ld[,c("SNP_A", "CHR_A", "BP_A", "CHR_B", "BP_B", "SNP_B", "R2")]
+      #only deletion
+      lld <- (lld[grepl("DEL", lld$SNP_A) & grepl("DEL", lld$SNP_B),])
       dim(lld)
       head(lld)
       
@@ -165,13 +167,13 @@ halfset
 #plot with verticle lines
 pp <- LDplot +
   geom_vline(xintercept = halfset$`windowdt$dist_w`[1], color = colorset[1], size = 0.5, linetype="dashed") +
-  geom_text(aes(x=halfset$`windowdt$dist_w`[1]), label=paste(left(halfset$`windowdt$dist_w`[1], 2), "kb\n", sep = ""), y=0.3, colour=colorset[1], angle=90) +
+  geom_text(aes(x=halfset$`windowdt$dist_w`[1]), label=paste(left(halfset$`windowdt$dist_w`[1], 2), "kb\n", sep = ""), y=0.19, colour=colorset[1], angle=90) +
   
   geom_vline(xintercept = halfset$`windowdt$dist_w`[3], color = colorset[2], size = 0.5, linetype="dashed") +
-  geom_text(aes(x=halfset$`windowdt$dist_w`[3]), label=paste("\n", left(halfset$`windowdt$dist_w`[3], 2), "kb", sep = ""), y=0.3, colour=colorset[2], angle=90) +
+  geom_text(aes(x=halfset$`windowdt$dist_w`[3]), label=paste("\n", left(halfset$`windowdt$dist_w`[3], 2), "kb", sep = ""), y=0.19, colour=colorset[2], angle=90) +
   
   geom_vline(xintercept = halfset$`windowdt$dist_w`[2], color = colorset[3], size = 0.5, linetype="dashed") +
-  geom_text(aes(x=halfset$`windowdt$dist_w`[2]), label=paste("\n", left(halfset$`windowdt$dist_w`[2], 2), "kb", sep = ""), y=0.3, colour=colorset[3], angle=90) +
+  geom_text(aes(x=halfset$`windowdt$dist_w`[2]), label=paste("\n", left(halfset$`windowdt$dist_w`[2], 2), "kb", sep = ""), y=0.19, colour=colorset[3], angle=90) +
   
   scale_x_continuous(breaks = seq(100000, 600000, by = 100000)) +
   theme(axis.text.x = element_text(angle=0, size = 10)) +
@@ -179,6 +181,6 @@ pp <- LDplot +
 pp
 
 
-tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/lumpy_ld_with_subcat_windows.tiff", width=8, height=5, units="in", res=300)
+tiff("/Users/ksongsom/OneDrive/postdoc/publication/terra/result/lumpy_ld_with_subcat_windows_onlydel.tiff", width=8, height=5, units="in", res=300)
 pp
 dev.off()
