@@ -11,5 +11,5 @@ The SVs were called by svtools as described in https://github.com/hall-lab/svtoo
 7. plot the k-mean clusters with geological location via "map_distribution.R"
 8. plot ADMIXTURE result with k-mean clustering via "plot_admixture_347.R"
 9. determine cluster-specific SVs via "unique_SV_group.R"
-10. perform GO enrichment analysis via "GO_general.R", and "GO_cluster_specific.R"
+10. perform GO enrichment analysis via "GO_cluster_specific_based_on_snpeff"
 
